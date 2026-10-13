@@ -10,17 +10,21 @@ import { CartPage } from "../pages/CartPage";
 import { CheckoutPage } from "../pages/CheckoutPage";
 import { OrderConfirmationPage } from "../pages/OrderConfirmationPage";
 import { ProfilePage } from "../pages/ProfilePage";
+import { homeSearchSchema } from "./features/catalog/search";
+import NotFoundPage from "@/pages/NotFound";
 
-// 1. Rota Raiz (O Shell com Navbar e Footer)
+// 1. Rota Raiz (o shell com Navbar e Footer) + página para rotas inexistentes
 const rootRoute = createRootRoute({
   component: App,
+  notFoundComponent: NotFoundPage,
 });
 
-// 2. Rota Home (/)
+// 2. Rota Home (/): busca, filtros, ordenação e página ficam na URL
 const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: HomePage,
+  validateSearch: homeSearchSchema,
 });
 
 // 3. Rota Detalhes do NFT (/nft/$id)
@@ -58,7 +62,7 @@ const profileRoute = createRoute({
   component: ProfilePage,
 });
 
-// 8. Árvore de Rotas
+// 8. Árvore de rotas
 const routeTree = rootRoute.addChildren([
   homeRoute,
   nftDetailsRoute,
