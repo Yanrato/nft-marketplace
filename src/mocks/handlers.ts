@@ -4,13 +4,16 @@ import { getStoredNFTs } from "./db";
 import { nftListQuerySchema } from "@/contracts/nft";
 import type { ApiError } from "@/contracts/error";
 
+// Resposta de erro sempre no mesmo formato
 const apiError = (error: ApiError, status: number) =>
   HttpResponse.json(error, { status });
 
 export const handlers = [
+  // GET /api/nfts: busca, filtros, ordenação e paginação
   http.get("/api/nfts", async ({ request }) => {
-    await delay(300);
+    await delay(300); // simula a latência da rede
 
+    // 1) Ler e validar os parâmetros da URL
     const url = new URL(request.url);
     const parsed = nftListQuerySchema.safeParse(
       Object.fromEntries(url.searchParams)
@@ -23,12 +26,15 @@ export const handlers = [
     }
     const { search, category, network, sort, page, limit } = parsed.data;
 
+    // 2) Filtrar (cada filtro só age se o parâmetro foi enviado)
     let nfts = getStoredNFTs();
 
     if (category && category !== "Todos") {
       nfts = nfts.filter((n) => n.category === category);
     }
-    if (network) nfts = nfts.filter((n) => n.network === network);
+    if (network) {
+      nfts = nfts.filter((n) => n.network === network);
+    }
     if (search) {
       const q = search.toLowerCase();
       nfts = nfts.filter(
@@ -38,13 +44,14 @@ export const handlers = [
       );
     }
 
-    // Preço comparado com Decimal, nunca com number
+    // 3) Ordenar (preço comparado com Decimal, nunca com number)
     if (sort === "price-asc") {
       nfts = [...nfts].sort((a, b) => new Decimal(a.price).comparedTo(b.price));
     } else if (sort === "price-desc") {
       nfts = [...nfts].sort((a, b) => new Decimal(b.price).comparedTo(a.price));
     }
 
+    // 4) Paginar
     const total = nfts.length;
     const start = (page - 1) * limit;
 
@@ -56,7 +63,14 @@ export const handlers = [
     });
   }),
 
-  // ... mantenha aqui o handler GET /api/nfts/:id que já existe,
-  // mas troque o 404 vazio por:
-  //   return apiError({ code: "NOT_FOUND", message: "NFT não encontrado" }, 404);
+  // GET /api/nfts/:id: detalhe de um NFT (404 se não existir)
+  http.get("/api/nfts/:id", async ({ params }) => {
+    await delay(200);
+
+    const nft = getStoredNFTs().find((item) => item.id === params.id);
+    if (!nft) {
+      return apiError({ code: "NOT_FOUND", message: "NFT não encontrado" }, 404);
+    }
+    return HttpResponse.json(nft);
+  }),
 ];

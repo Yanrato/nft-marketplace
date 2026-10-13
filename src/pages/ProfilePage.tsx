@@ -11,7 +11,6 @@ import {
   Eye, 
   EyeOff, 
   ChevronDown,
-  Camera,
   Check
 } from 'lucide-react';
 
