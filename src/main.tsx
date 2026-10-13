@@ -5,10 +5,11 @@ import { AppProviders } from "./app/providers";
 import { router } from "./app/router";
 import "./index.css";
 
-// Função para iniciar o MSW antes do React
+// Liga o MSW só se VITE_ENABLE_MOCKS=true
 async function enableMocking() {
+  if (import.meta.env.VITE_ENABLE_MOCKS !== "true") return;
   const { worker } = await import("./mocks/browser");
-  return worker.start();
+  await worker.start({ onUnhandledRequest: "bypass" });
 }
 
 enableMocking().then(() => {

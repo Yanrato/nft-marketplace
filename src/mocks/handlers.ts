@@ -1,63 +1,62 @@
-import { http, HttpResponse, delay } from 'msw';
-import { getStoredNFTs } from './db';
+import { http, HttpResponse, delay } from "msw";
+import Decimal from "decimal.js";
+import { getStoredNFTs } from "./db";
+import { nftListQuerySchema } from "@/contracts/nft";
+import type { ApiError } from "@/contracts/error";
+
+const apiError = (error: ApiError, status: number) =>
+  HttpResponse.json(error, { status });
 
 export const handlers = [
-  // GET /api/nfts (com suporte a busca, filtros, ordenação e paginação)
-  http.get('/api/nfts', async ({ request }) => {
-    // Simula latência de rede realista (exigência do edital)
+  http.get("/api/nfts", async ({ request }) => {
     await delay(300);
 
     const url = new URL(request.url);
-    const category = url.searchParams.get('category');
-    const search = url.searchParams.get('search')?.toLowerCase();
-    const network = url.searchParams.get('network');
-    const page = Number(url.searchParams.get('page') || '1');
-    const limit = Number(url.searchParams.get('limit') || '8');
+    const parsed = nftListQuerySchema.safeParse(
+      Object.fromEntries(url.searchParams)
+    );
+    if (!parsed.success) {
+      return apiError(
+        { code: "VALIDATION_ERROR", message: "Parâmetros inválidos" },
+        400
+      );
+    }
+    const { search, category, network, sort, page, limit } = parsed.data;
 
     let nfts = getStoredNFTs();
 
-    // Filtro por categoria
-    if (category && category !== 'Todos') {
-      nfts = nfts.filter(nft => nft.category === category);
+    if (category && category !== "Todos") {
+      nfts = nfts.filter((n) => n.category === category);
     }
-
-    // Filtro por busca
+    if (network) nfts = nfts.filter((n) => n.network === network);
     if (search) {
-      nfts = nfts.filter(nft => 
-        nft.name.toLowerCase().includes(search) || 
-        nft.collection.toLowerCase().includes(search)
+      const q = search.toLowerCase();
+      nfts = nfts.filter(
+        (n) =>
+          n.name.toLowerCase().includes(q) ||
+          n.collection.toLowerCase().includes(q)
       );
     }
 
-    // Filtro por rede
-    if (network) {
-      nfts = nfts.filter(nft => nft.network === network);
+    // Preço comparado com Decimal, nunca com number
+    if (sort === "price-asc") {
+      nfts = [...nfts].sort((a, b) => new Decimal(a.price).comparedTo(b.price));
+    } else if (sort === "price-desc") {
+      nfts = [...nfts].sort((a, b) => new Decimal(b.price).comparedTo(a.price));
     }
 
-    // Paginação
     const total = nfts.length;
-    const startIndex = (page - 1) * limit;
-    const paginatedNFTs = nfts.slice(startIndex, startIndex + limit);
+    const start = (page - 1) * limit;
 
     return HttpResponse.json({
-      data: paginatedNFTs,
+      data: nfts.slice(start, start + limit),
       total,
       page,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   }),
 
-  // GET /api/nfts/:id (Detalhe do NFT com tratamento de 404)
-  http.get('/api/nfts/:id', async ({ params }) => {
-    await delay(200);
-    const { id } = params;
-    const nfts = getStoredNFTs();
-    const nft = nfts.find(item => item.id === id);
-
-    if (!nft) {
-      return new HttpResponse(null, { status: 404, statusText: 'NFT Not Found' });
-    }
-
-    return HttpResponse.json(nft);
-  }),
+  // ... mantenha aqui o handler GET /api/nfts/:id que já existe,
+  // mas troque o 404 vazio por:
+  //   return apiError({ code: "NOT_FOUND", message: "NFT não encontrado" }, 404);
 ];

@@ -1,6 +1,7 @@
 import type { NFT } from "@/types";
 
-export const initialNFTs: NFT[] = [
+// Dados-base do catálogo (sem o campo "version", que é adicionado abaixo)
+const baseNFTs: Omit<NFT, "version">[] = [
   {
     id: '042',
     name: 'Emerald Ape #042',
@@ -150,14 +151,55 @@ export const initialNFTs: NFT[] = [
   },
 ];
 
-// Gerenciamento com persistência local (Exigência do edital para sustentar F5)
-const STORAGE_KEY = 'kurio_nfts_db';
+// Todo NFT começa na versão 1 (usada depois para o tempo real)
+export const initialNFTs: NFT[] = baseNFTs.map((nft) => ({ ...nft, version: 1 }));
+
+// ---------------------------------------------------------------
+// NFTs gerados de forma determinística (sempre os mesmos),
+// para exercitar filtros e paginação
+// ---------------------------------------------------------------
+const CATEGORIES = ["Arte digital", "Arte 3D", "Fotografia", "Música", "Colecionáveis"];
+const NETWORKS = ["Ethereum", "Polygon", "Solana"] as const;
+const IMAGES = initialNFTs.slice(0, 3).map((n) => n.imageUrl);
+
+function generateNFTs(count: number): NFT[] {
+  return Array.from({ length: count }, (_, i) => {
+    const n = i + 1000; // começa em 1000 para não colidir com os ids existentes
+    const total = [10, 50, 100][i % 3];
+    return {
+      id: String(n),
+      name: `Kurio Piece #${n}`,
+      price: (0.2 + ((i * 37) % 200) / 100).toFixed(2),
+      collection: i % 2 === 0 ? "Kurio Apes" : "Kurio Editions",
+      category: CATEGORIES[i % CATEGORIES.length],
+      network: NETWORKS[i % NETWORKS.length],
+      editions: ["1/1", "1/10", "ABERTA"],
+      totalEditions: total,
+      availableEditions: (i * 7) % total,
+      rating: 4 + (i % 10) / 10,
+      reviewsCount: 5 + (i % 30),
+      description: `Peça colecionável número ${n} da coleção Kurio.`,
+      imageUrl: IMAGES[i % IMAGES.length],
+      contractAddress: "0x7A42...19E8",
+      tokenId: `#${n}`,
+      creatorFee: "5%",
+      version: 1,
+    };
+  });
+}
+
+export const seedNFTs: NFT[] = [...initialNFTs, ...generateNFTs(36)];
+
+// ---------------------------------------------------------------
+// Gerenciamento com persistência local (sustenta o F5)
+// ---------------------------------------------------------------
+const STORAGE_KEY = 'kurio_nfts_db_v2';
 
 export function getStoredNFTs(): NFT[] {
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(initialNFTs));
-    return initialNFTs;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(seedNFTs));
+    return seedNFTs;
   }
   return JSON.parse(data);
 }
@@ -167,7 +209,7 @@ export function saveStoredNFTs(nfts: NFT[]) {
 }
 
 export function resetDatabase() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(initialNFTs));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(seedNFTs));
   localStorage.removeItem('kurio_cart');
   localStorage.removeItem('kurio_orders');
 }
