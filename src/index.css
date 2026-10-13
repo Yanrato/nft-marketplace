@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 20 60% 4%;
+    --foreground: 0 0% 98%;
+    --card: 20 40% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 20 40% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 20 60% 4%;
+    --secondary: 20 20% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 20 20% 12%;
+    --muted-foreground: 20 10% 60%;
+    --accent: 20 20% 12%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 20 20% 16%;
+    --input: 20 20% 16%;
+    --ring: 38 92% 50%;
+    --radius: 0.5rem;
+  }
+
+  /* Usando CSS nativo em vez de @apply para evitar conflito de compilação */
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: #140D0A;
+    color: hsl(var(--foreground));
+    min-height: 100vh;
+  }
+}
