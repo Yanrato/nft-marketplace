@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2, Minus, Plus } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ProductCard, type NFTItem } from "../components/layout/products/ProductCard";
+import {
+  ProductCard,
+  type NFTItem,
+} from "../components/layout/products/ProductCard";
 import { useCart } from "@/features/cart/useCart";
+import { getOrderQuote } from "@/features/checkout/api";
 
 const recommendedNFTs: NFTItem[] = [
   {
@@ -44,321 +48,351 @@ const recommendedNFTs: NFTItem[] = [
 
 export function CartPage() {
   const navigate = useNavigate();
-
-  const {
-    items,
-    updateQuantity,
-    removeItem,
-  } = useCart();
+  const { items, updateQuantity, removeItem } = useCart();
 
   const [coupon, setCoupon] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(
+    () => localStorage.getItem("kurio_coupon") ?? ""
+  );
   const [discount, setDiscount] = useState(0);
+  const [couponMessage, setCouponMessage] = useState("");
 
-  const networkFee = 0.016;
+  const networkFee = items.length > 0 ? 0.016 : 0;
 
   const subtotal = items.reduce(
     (acc, item) => acc + Number(item.price) * item.quantity,
     0
   );
 
-  const total =
-    items.length > 0
-      ? Math.max(0, subtotal - discount) + networkFee
-      : 0;
+  const total = Math.max(0, subtotal - discount) + networkFee;
 
-  const handleApplyCoupon = (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
-    e.preventDefault();
+  useEffect(() => {
+    let cancelled = false;
 
-    if (coupon.trim().toUpperCase() === "KURIO10") {
-      setDiscount(subtotal * 0.1);
-      alert("Cupom KURIO10 aplicado: 10% de desconto!");
-    } else {
+    if (items.length === 0) {
       setDiscount(0);
-      alert("Cupom inválido ou expirado.");
+      return;
+    }
+
+    getOrderQuote({
+      items,
+      couponCode: appliedCoupon || undefined,
+    })
+      .then((quote) => {
+        if (!cancelled) {
+          setDiscount(Number(quote.discount));
+          setCouponMessage(
+            appliedCoupon ? `Cupom ${appliedCoupon} aplicado.` : ""
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDiscount(0);
+
+          if (appliedCoupon) {
+            setCouponMessage(
+              "Não foi possível validar o cupom ou a cotação."
+            );
+          }
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, appliedCoupon]);
+
+  const handleApplyCoupon = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    const code = coupon.trim().toUpperCase();
+
+    if (!code) {
+      setCouponMessage("Digite um código promocional.");
+      return;
+    }
+
+    try {
+      const quote = await getOrderQuote({
+        items,
+        couponCode: code,
+      });
+
+      localStorage.setItem("kurio_coupon", code);
+      setAppliedCoupon(code);
+      setDiscount(Number(quote.discount));
+      setCouponMessage(
+        `Cupom ${code} aplicado: desconto de ${Number(
+          quote.discount
+        ).toFixed(3)} ETH.`
+      );
+    } catch (error: unknown) {
+      localStorage.removeItem("kurio_coupon");
+      setAppliedCoupon("");
+      setDiscount(0);
+
+      const message =
+        error &&
+          typeof error === "object" &&
+          "response" in error
+          ? (
+            error as {
+              response?: {
+                data?: { message?: string };
+              };
+            }
+          ).response?.data?.message
+          : undefined;
+
+      setCouponMessage(message ?? "Cupom inválido ou expirado.");
     }
   };
 
+  const handleRemoveCoupon = () => {
+    localStorage.removeItem("kurio_coupon");
+    setAppliedCoupon("");
+    setCoupon("");
+    setDiscount(0);
+    setCouponMessage("Cupom removido.");
+  };
+
   return (
-    <main className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-24 py-8 flex flex-col gap-16 w-full font-mono">
-      {/* Breadcrumb */}
-      <nav
-        aria-label="Breadcrumb"
-        className="text-xs text-neutral-400"
-      >
-        <Link
-          to="/"
-          className="hover:text-white transition-colors"
-        >
+    <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-16 px-6 py-8 font-mono md:px-12 lg:px-24">
+      <nav aria-label="Breadcrumb" className="text-xs text-neutral-400">
+        <Link to="/" className="transition-colors hover:text-white">
           Início
         </Link>
-
         <span className="mx-2">/</span>
-
         <span className="text-neutral-200">Carrinho</span>
       </nav>
 
-      {/* Itens do carrinho e resumo */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-        {/* Lista de itens */}
-        <div className="lg:col-span-8 flex flex-col gap-4">
-          <div className="hidden sm:grid sm:grid-cols-12 text-xs text-neutral-400 font-bold border-b border-white/10 pb-3 px-4">
+      <div className="grid grid-cols-1 items-start gap-12 lg:grid-cols-12">
+        <div className="flex flex-col gap-4 lg:col-span-8">
+          <div className="hidden grid-cols-12 border-b border-white/10 px-4 pb-3 text-xs font-bold text-neutral-400 sm:grid">
             <span className="col-span-5">NFTs</span>
-            <span className="col-span-2 text-center">
-              Preço
-            </span>
-            <span className="col-span-2 text-center">
-              Edições
-            </span>
-            <span className="col-span-2 text-center">
-              Total
-            </span>
+            <span className="col-span-2 text-center">Preço</span>
+            <span className="col-span-2 text-center">Edições</span>
+            <span className="col-span-2 text-center">Total</span>
             <span className="col-span-1" />
           </div>
 
           {items.length === 0 ? (
-            <div className="py-12 text-center text-neutral-400 text-xs bg-[#1C120C] rounded-2xl border border-white/5">
-              <p>Seu carrinho está vazio.</p>
-
-              <button
-                type="button"
-                onClick={() => navigate({ to: "/" })}
-                className="mt-4 text-amber-500 hover:text-amber-400 underline"
+            <div className="flex flex-col items-center gap-4 rounded-lg border border-white/10 py-16 text-center">
+              <p className="text-sm text-neutral-300">
+                Seu carrinho está vazio.
+              </p>
+              <Link
+                to="/"
+                className="rounded-md bg-amber-600 px-5 py-3 text-xs font-bold text-black transition-colors hover:bg-amber-500"
               >
                 Explorar NFTs
-              </button>
+              </Link>
             </div>
           ) : (
-            items.map((item) => {
-              const itemTotal = (
-                Number(item.price) * item.quantity
-              ).toFixed(2);
-
-              return (
-                <div
-                  key={item.id}
-                  className="p-4 rounded-xl bg-[#1C120C] border border-white/5 flex flex-col sm:grid sm:grid-cols-12 items-center gap-4 text-xs transition-colors hover:border-amber-900/30"
-                >
-                  {/* Imagem e identificação */}
-                  <div className="col-span-5 flex items-center gap-3 w-full min-w-0">
-                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-neutral-900 shrink-0 border border-white/5">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    <div className="flex flex-col min-w-0">
-                      <h3 className="font-bold text-white text-xs truncate">
-                        {item.name}
-                      </h3>
-
-                      <span className="text-[11px] text-neutral-400">
-                        ID do token: #{item.tokenId}
-                      </span>
-
-                      <span className="text-[11px] text-neutral-500">
-                        Edição: {item.edition}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Preço unitário */}
-                  <div className="col-span-2 text-center text-neutral-200">
-                    <span className="sm:hidden text-neutral-400 mr-2">
-                      Preço:
-                    </span>
-
-                    {Number(item.price).toFixed(2)} ETH
-                  </div>
-
-                  {/* Quantidade */}
-                  <div className="col-span-2 flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      aria-label={`Diminuir quantidade de ${item.name}`}
-                      disabled={item.quantity <= 1}
-                      onClick={() =>
-                        updateQuantity(item.id, -1)
-                      }
-                      className="w-6 h-6 rounded-full bg-amber-600/20 text-amber-500 hover:bg-amber-600 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-
-                    <span className="font-bold text-white px-1">
-                      {item.quantity}
-                    </span>
-
-                    <button
-                      type="button"
-                      aria-label={`Aumentar quantidade de ${item.name}`}
-                      onClick={() =>
-                        updateQuantity(item.id, 1)
-                      }
-                      className="w-6 h-6 rounded-full bg-amber-600/20 text-amber-500 hover:bg-amber-600 hover:text-black flex items-center justify-center transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  {/* Total do item */}
-                  <div className="col-span-2 text-center text-amber-500 font-bold">
-                    <span className="sm:hidden text-neutral-400 mr-2">
-                      Total:
-                    </span>
-
-                    {itemTotal} ETH
-                  </div>
-
-                  {/* Remover item */}
-                  <div className="col-span-1 flex justify-end w-full sm:w-auto">
-                    <button
-                      type="button"
-                      aria-label={`Remover ${item.name}`}
-                      onClick={() => removeItem(item.id)}
-                      className="text-neutral-500 hover:text-red-400 transition-colors p-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+            items.map((item) => (
+              <div
+                key={`${item.nftId}-${item.edition}`}
+                className="grid grid-cols-1 items-center gap-4 rounded-lg border border-white/10 p-4 sm:grid-cols-12"
+              >
+                <div className="flex items-center gap-4 sm:col-span-5">
+                  <img
+                    src={item.imageUrl}
+                    alt={item.name}
+                    className="h-16 w-16 rounded-md object-cover"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-neutral-100">
+                      {item.name}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-400">
+                      Edição: {item.edition}
+                    </p>
                   </div>
                 </div>
-              );
-            })
+
+                <div className="text-xs text-neutral-300 sm:col-span-2 sm:text-center">
+                  <span className="sm:hidden">Preço: </span>
+                  {Number(item.price).toFixed(3)} ETH
+                </div>
+
+                <div className="flex items-center gap-3 sm:col-span-2 sm:justify-center">
+                  <button
+                    type="button"
+                    aria-label={`Diminuir quantidade de ${item.name}`}
+                    onClick={() =>
+                      updateQuantity(
+                        item.nftId,
+                        Math.max(1, item.quantity - 1)
+                      )
+                    }
+                    disabled={item.quantity <= 1}
+                    className="rounded border border-white/10 p-1 text-neutral-300 disabled:opacity-40"
+                  >
+                    <Minus size={14} />
+                  </button>
+
+                  <span className="min-w-4 text-center text-xs text-neutral-200">
+                    {item.quantity}
+                  </span>
+
+                  <button
+                    type="button"
+                    aria-label={`Aumentar quantidade de ${item.name}`}
+                    onClick={() =>
+                      updateQuantity(
+                        item.nftId,
+                        item.quantity + 1
+                      )
+                    }
+                    className="rounded border border-white/10 p-1 text-neutral-300"
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+
+                <div className="text-xs text-neutral-200 sm:col-span-2 sm:text-center">
+                  <span className="sm:hidden">Total: </span>
+                  {(Number(item.price) * item.quantity).toFixed(3)} ETH
+                </div>
+
+                <div className="flex justify-end sm:col-span-1">
+                  <button
+                    type="button"
+                    aria-label={`Remover ${item.name} do carrinho`}
+                    onClick={() => removeItem(item.nftId)}
+                    className="rounded p-2 text-neutral-400 transition-colors hover:text-red-400"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))
           )}
         </div>
 
-        {/* Resumo da carteira */}
-        <aside className="lg:col-span-4 flex flex-col gap-6">
-          <h2 className="text-sm font-bold text-white tracking-wide">
-            Resumo da carteira
+        <aside className="flex flex-col gap-6 rounded-lg border border-white/10 p-5 lg:col-span-4">
+          <h2 className="text-sm font-bold text-neutral-100">
+            Resumo do pedido
           </h2>
 
-          {/* Cupom promocional */}
-          <form
-            onSubmit={handleApplyCoupon}
-            className="flex flex-col gap-2"
-          >
+          <div className="flex justify-between text-xs">
+            <span className="text-neutral-400">Subtotal</span>
+            <span className="text-neutral-200">
+              {subtotal.toFixed(3)} ETH
+            </span>
+          </div>
+
+          <div className="flex justify-between text-xs">
+            <span className="text-neutral-400">Desconto</span>
+            <span className="text-emerald-400">
+              -{discount.toFixed(3)} ETH
+            </span>
+          </div>
+
+          <div className="flex justify-between text-xs">
+            <span className="text-neutral-400">Taxa de rede</span>
+            <span className="text-neutral-200">
+              {networkFee.toFixed(3)} ETH
+            </span>
+          </div>
+
+          <div className="flex justify-between border-t border-white/10 pt-4 text-sm font-bold">
+            <span className="text-neutral-100">Total</span>
+            <span className="text-amber-400">{total.toFixed(3)} ETH</span>
+          </div>
+
+          <form onSubmit={handleApplyCoupon} className="flex flex-col gap-3">
             <label
               htmlFor="coupon"
-              className="text-[11px] text-neutral-400"
+              className="text-xs font-bold text-neutral-300"
             >
               Código promocional
             </label>
 
-            <div className="flex">
+            <div className="flex gap-2">
               <input
                 id="coupon"
-                type="text"
-                placeholder="Digite o código promocional..."
+                name="coupon"
                 value={coupon}
-                onChange={(e) => setCoupon(e.target.value)}
-                className="bg-[#241710] border border-white/5 rounded-l-md px-3 py-2 text-xs text-neutral-200 placeholder-neutral-500 outline-none w-full focus:border-amber-600 transition-colors"
+                onChange={(event) => setCoupon(event.target.value)}
+                placeholder="Digite seu cupom"
+                className="min-w-0 flex-1 rounded-md border border-white/10 bg-[#1A110B] px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
               />
 
               <button
                 type="submit"
                 disabled={items.length === 0}
-                className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-neutral-950 font-bold text-xs px-4 py-2 rounded-r-md transition-colors shrink-0"
+                className="rounded-md border border-amber-600 px-3 py-2 text-xs text-amber-400 transition-colors hover:bg-amber-600/10 disabled:opacity-40"
               >
                 Aplicar
               </button>
             </div>
+
+            {couponMessage && (
+              <p
+                role="status"
+                className="text-xs text-neutral-300"
+              >
+                {couponMessage}
+              </p>
+            )}
+
+            {appliedCoupon && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-emerald-400">
+                  Cupom ativo: {appliedCoupon}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleRemoveCoupon}
+                  className="text-neutral-400 underline hover:text-white"
+                >
+                  Remover
+                </button>
+              </div>
+            )}
           </form>
 
-          {/* Valores */}
-          <div className="space-y-3 pt-2 text-xs border-t border-white/5">
-            <div className="flex justify-between items-center text-neutral-300">
-              <span>Subtotal</span>
+          <button
+            type="button"
+            disabled={items.length === 0}
+            onClick={() => navigate({ to: "/checkout" })}
+            className="rounded-md bg-amber-600 px-5 py-3 text-xs font-bold text-black transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Continuar para pagamento
+          </button>
 
-              <span className="font-bold text-white">
-                {subtotal.toFixed(2)} ETH
-              </span>
-            </div>
-
-            <div className="flex justify-between items-center text-neutral-300">
-              <span>Desconto</span>
-
-              <span className="text-neutral-400">
-                (-) {discount.toFixed(2)} ETH
-              </span>
-            </div>
-
-            <div className="flex justify-between items-start text-neutral-300">
-              <div className="flex flex-col">
-                <span>Taxa de rede</span>
-
-                <span className="text-[10px] text-amber-600/80">
-                  Taxa estimada
-                </span>
-              </div>
-
-              <span className="font-bold text-neutral-200">
-                {items.length > 0
-                  ? networkFee.toFixed(3)
-                  : "0.000"}{" "}
-                ETH
-              </span>
-            </div>
-
-            <div className="border-t border-white/10 pt-4 flex justify-between items-center">
-              <span className="text-sm font-bold text-white">
-                Total
-              </span>
-
-              <span className="text-base font-extrabold text-amber-500">
-                {total.toFixed(3)} ETH
-              </span>
-            </div>
-          </div>
-
-          {/* Ações */}
-          <div className="flex flex-col gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => navigate({ to: "/checkout" })}
-              disabled={items.length === 0}
-              className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-950 font-bold text-xs py-3.5 rounded-lg uppercase tracking-wider transition-colors shadow-md text-center"
-            >
-              Conectar e finalizar
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate({ to: "/" })}
-              className="text-xs text-neutral-400 hover:text-white transition-colors text-center py-1"
-            >
-              Continuar explorando
-            </button>
-          </div>
+          <Link
+            to="/"
+            className="text-center text-xs text-neutral-400 underline transition-colors hover:text-white"
+          >
+            Continuar comprando
+          </Link>
         </aside>
       </div>
 
-      {/* Recomendações */}
-      <section className="border-t border-white/10 pt-10 pb-8 space-y-6">
-        <h2 className="text-xs font-bold text-amber-500 tracking-wide">
-          Colecionadores também viram
-        </h2>
+      <section className="flex flex-col gap-6">
+        <div className="flex items-end justify-between">
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-widest text-amber-500">
+              Descubra mais
+            </p>
+            <h2 className="text-xl font-bold text-neutral-100">
+              Você também pode gostar
+            </h2>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
           {recommendedNFTs.map((nft) => (
             <ProductCard key={nft.id} nft={nft} />
           ))}
-        </div>
-
-        <div
-          className="flex justify-center items-center gap-1.5 pt-4"
-          aria-hidden="true"
-        >
-          <span className="w-2 h-2 rounded-full bg-amber-500" />
-          <span className="w-2 h-2 rounded-full bg-amber-500/40" />
-          <span className="w-2 h-2 rounded-full bg-amber-500/40" />
         </div>
       </section>
     </main>
   );
 }
-
-export default CartPage;

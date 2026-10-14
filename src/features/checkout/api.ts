@@ -1,4 +1,3 @@
-
 import { api } from "@/lib/api";
 import type { CartItem } from "@/features/cart/cart-context";
 
@@ -23,6 +22,7 @@ export interface CreateOrderPayload {
   customer: CheckoutCustomer;
   items: CartItem[];
   idempotencyKey: string;
+  couponCode?: string;
 }
 
 export interface CreatedOrder {
@@ -35,8 +35,25 @@ export interface CreatedOrder {
   discount: string;
   networkFee: string;
   total: string;
+  couponCode?: string;
   status: OrderStatus;
   statusMessage?: string;
+}
+
+export interface OrderQuote {
+  subtotal: string;
+  discount: string;
+  networkFee: string;
+  total: string;
+  couponCode?: string;
+}
+
+export async function getOrderQuote(payload: {
+  items: CartItem[];
+  couponCode?: string;
+}): Promise<OrderQuote> {
+  const response = await api.post<OrderQuote>("/quote", payload);
+  return response.data;
 }
 
 export async function createOrder(

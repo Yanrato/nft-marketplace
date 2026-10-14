@@ -1,15 +1,19 @@
 
 import { http, HttpResponse, delay } from "msw";
 import Decimal from "decimal.js";
+
 import type {
   CreateOrderPayload,
   CreatedOrder,
 } from "@/features/checkout/api";
 import type { CartItem } from "@/features/cart/cart-context";
+
 import { getStoredNFTs, saveStoredNFTs } from "./db";
 
 const ORDERS_STORAGE_KEY = "kurio_orders";
 const NETWORK_FEE = new Decimal("0.016");
+
+type CheckoutCustomerLike = CreateOrderPayload["customer"];
 
 function readOrders(): CreatedOrder[] {
   try {
@@ -58,9 +62,9 @@ function isValidCustomer(customer: CheckoutCustomerLike): boolean {
   );
 }
 
-type CheckoutCustomerLike = CreateOrderPayload["customer"];
-
-function aggregateQuantities(items: CartItem[]): Map<string, number> {
+function aggregateQuantities(
+  items: CartItem[]
+): Map<string, number> {
   const quantities = new Map<string, number>();
 
   for (const item of items) {
@@ -98,7 +102,193 @@ function hasSufficientStock(
   return true;
 }
 
+function getCouponDiscount(
+  couponCode: string | undefined,
+  subtotal: Decimal
+): { discount: Decimal; code?: string } {
+  const code = couponCode?.trim().toUpperCase();
+
+  if (!code) {
+    return { discount: new Decimal(0) };
+  }
+
+  if (code === "KURIOEXPIRED") {
+    throw new Error("COUPON_EXPIRED");
+  }
+
+  if (code !== "KURIO10") {
+    throw new Error("INVALID_COUPON");
+  }
+
+  return {
+    discount: subtotal.mul("0.10"),
+    code,
+  };
+}
+
+function calculateQuote(
+  items: CartItem[],
+  couponCode?: string
+) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("INVALID_ITEMS");
+  }
+
+  const nfts = getStoredNFTs();
+  const quantities = aggregateQuantities(items);
+  const verifiedItems: CartItem[] = [];
+
+  for (const item of items) {
+    if (
+      !item ||
+      typeof item.nftId !== "string" ||
+      typeof item.edition !== "string" ||
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity < 1
+    ) {
+      throw new Error("INVALID_ITEMS");
+    }
+
+    const nft = nfts.find((entry) => entry.id === item.nftId);
+
+    if (!nft) {
+      throw new Error("NFT_NOT_FOUND");
+    }
+
+    if (!nft.editions.includes(item.edition)) {
+      throw new Error("INVALID_EDITION");
+    }
+
+    verifiedItems.push({
+      ...item,
+      name: nft.name,
+      tokenId: nft.tokenId,
+      price: nft.price,
+      imageUrl: nft.imageUrl,
+    });
+  }
+
+  if (!hasSufficientStock(verifiedItems, quantities)) {
+    throw new Error("INSUFFICIENT_STOCK");
+  }
+
+  const subtotal = verifiedItems.reduce(
+    (sum, item) =>
+      sum.plus(new Decimal(item.price).mul(item.quantity)),
+    new Decimal(0)
+  );
+
+  const { discount, code } = getCouponDiscount(
+    couponCode,
+    subtotal
+  );
+
+  const networkFee = NETWORK_FEE;
+  const total = Decimal.max(
+    new Decimal(0),
+    subtotal.minus(discount)
+  ).plus(networkFee);
+
+  return {
+    items: verifiedItems,
+    subtotal: subtotal.toFixed(),
+    discount: discount.toFixed(),
+    networkFee: networkFee.toFixed(),
+    total: total.toFixed(),
+    ...(code ? { couponCode: code } : {}),
+  };
+}
+
+function quoteError(error: unknown) {
+  const code = error instanceof Error ? error.message : "";
+
+  switch (code) {
+    case "COUPON_EXPIRED":
+      return errorResponse(
+        "COUPON_EXPIRED",
+        "Este cupom está expirado.",
+        422
+      );
+
+    case "INVALID_COUPON":
+      return errorResponse(
+        "INVALID_COUPON",
+        "Cupom inválido.",
+        422
+      );
+
+    case "INSUFFICIENT_STOCK":
+      return errorResponse(
+        "INSUFFICIENT_STOCK",
+        "O estoque de um ou mais NFTs é insuficiente.",
+        409
+      );
+
+    case "NFT_NOT_FOUND":
+      return errorResponse(
+        "NFT_NOT_FOUND",
+        "Um NFT do carrinho não foi encontrado.",
+        404
+      );
+
+    case "INVALID_EDITION":
+      return errorResponse(
+        "INVALID_EDITION",
+        "Uma edição selecionada não existe.",
+        400
+      );
+
+    default:
+      return errorResponse(
+        "INVALID_ITEMS",
+        "Não foi possível calcular a cotação.",
+        400
+      );
+  }
+}
+
 export const orderHandlers = [
+  http.post("/api/quote", async ({ request }) => {
+    await delay(250);
+
+    let body: {
+      items?: CartItem[];
+      couponCode?: string;
+    };
+
+    try {
+      body = (await request.json()) as {
+        items?: CartItem[];
+        couponCode?: string;
+      };
+    } catch {
+      return errorResponse(
+        "INVALID_JSON",
+        "Os dados enviados são inválidos.",
+        400
+      );
+    }
+
+    try {
+      const quote = calculateQuote(
+        body.items ?? [],
+        body.couponCode
+      );
+
+      return HttpResponse.json({
+        subtotal: quote.subtotal,
+        discount: quote.discount,
+        networkFee: quote.networkFee,
+        total: quote.total,
+        ...(quote.couponCode
+          ? { couponCode: quote.couponCode }
+          : {}),
+      });
+    } catch (error) {
+      return quoteError(error);
+    }
+  }),
+
   http.post("/api/orders", async ({ request }) => {
     await delay(400);
 
@@ -115,7 +305,8 @@ export const orderHandlers = [
     }
 
     const idempotencyKey =
-      request.headers.get("Idempotency-Key") ?? body?.idempotencyKey;
+      request.headers.get("Idempotency-Key") ??
+      body?.idempotencyKey;
 
     if (
       typeof idempotencyKey !== "string" ||
@@ -172,62 +363,12 @@ export const orderHandlers = [
       );
     }
 
-    const nfts = getStoredNFTs();
-    const quantityByNFT = aggregateQuantities(items);
-    const verifiedItems: CartItem[] = [];
+    let quote: ReturnType<typeof calculateQuote>;
 
-    for (const item of items) {
-      const nft = nfts.find((entry) => entry.id === item.nftId);
-
-      if (!nft) {
-        return errorResponse(
-          "NFT_NOT_FOUND",
-          `O NFT ${item.nftId} não foi encontrado.`,
-          404
-        );
-      }
-
-      if (!nft.editions.includes(item.edition)) {
-        return errorResponse(
-          "INVALID_EDITION",
-          `A edição selecionada para ${nft.name} não existe.`,
-          400
-        );
-      }
-
-      verifiedItems.push({
-        ...item,
-        name: nft.name,
-        tokenId: nft.tokenId,
-        price: nft.price,
-        imageUrl: nft.imageUrl,
-      });
-    }
-
-    if (!hasSufficientStock(verifiedItems, quantityByNFT)) {
-      return errorResponse(
-        "INSUFFICIENT_STOCK",
-        "O estoque de um ou mais NFTs é insuficiente.",
-        409
-      );
-    }
-
-    const subtotal = verifiedItems.reduce(
-      (sum, item) =>
-        sum.plus(new Decimal(item.price).mul(item.quantity)),
-      new Decimal(0)
-    );
-
-    const discount = new Decimal(0);
-    const networkFee = NETWORK_FEE;
-    const total = subtotal.minus(discount).plus(networkFee);
-
-    if (!total.isFinite() || total.isNegative()) {
-      return errorResponse(
-        "INVALID_TOTAL",
-        "Não foi possível calcular o total do pedido.",
-        400
-      );
+    try {
+      quote = calculateQuote(items, body.couponCode);
+    } catch (error) {
+      return quoteError(error);
     }
 
     const order: CreatedOrder = {
@@ -235,11 +376,14 @@ export const orderHandlers = [
       idempotencyKey,
       createdAt: new Date().toISOString(),
       customer,
-      items: verifiedItems,
-      subtotal: subtotal.toString(),
-      discount: discount.toString(),
-      networkFee: networkFee.toString(),
-      total: total.toString(),
+      items: quote.items,
+      subtotal: quote.subtotal,
+      discount: quote.discount,
+      networkFee: quote.networkFee,
+      total: quote.total,
+      ...(quote.couponCode
+        ? { couponCode: quote.couponCode }
+        : {}),
       status: "pending",
       statusMessage: "Aguardando confirmação do pedido.",
     };
@@ -262,7 +406,9 @@ export const orderHandlers = [
 
     const orderId = String(params.id);
     const orders = readOrders();
-    const orderIndex = orders.findIndex((entry) => entry.id === orderId);
+    const orderIndex = orders.findIndex(
+      (entry) => entry.id === orderId
+    );
 
     if (orderIndex === -1) {
       return errorResponse(
@@ -280,7 +426,9 @@ export const orderHandlers = [
 
     const simulateRejection =
       typeof order.customer.notes === "string" &&
-      order.customer.notes.toUpperCase().includes("[SIMULAR_REJEICAO]");
+      order.customer.notes
+        .toUpperCase()
+        .includes("[SIMULAR_REJEICAO]");
 
     if (simulateRejection) {
       const rejectedOrder: CreatedOrder = {
@@ -341,7 +489,8 @@ export const orderHandlers = [
 
       return {
         ...nft,
-        availableEditions: nft.availableEditions - purchasedQuantity,
+        availableEditions:
+          nft.availableEditions - purchasedQuantity,
         version: nft.version + 1,
       };
     });
