@@ -1,368 +1,415 @@
-import { useState } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
-import { useNavigate } from '@tanstack/react-router';
+import { useState, type FormEvent } from "react";
+import { ChevronDown, LoaderCircle } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useCart } from "@/features/cart/CartContext";
+import { createOrder, type CheckoutCustomer } from "@/features/checkout/api";
+import { useMutation } from "@tanstack/react-query";
+
+const LAST_ORDER_KEY = "kurio_last_order";
+
+const initialForm: CheckoutCustomer = {
+  displayName: "",
+  username: "",
+  network: "Ethereum",
+  profileName: "",
+  walletAddress: "",
+  secondaryWallet: "",
+  walletType: "Coinbase",
+  referralCode: "",
+  email: "",
+  ensName: "",
+  useOtherWallet: false,
+  notes: "",
+};
+
+const inputClass =
+  "w-full rounded-md border border-white/10 bg-[#1A110B] px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600";
 
 export function CheckoutPage() {
   const navigate = useNavigate();
-  // Formulário do Colecionador
-  const [formData, setFormData] = useState({
-    displayName: '',
-    username: '',
-    network: 'Ethereum',
-    profileName: '',
-    walletAddress: '',
-    secondaryWallet: '',
-    walletType: 'Coinbase',
-    referralCode: '',
-    email: '',
-    ensName: '',
-    useOtherWallet: false,
-    notes: '',
+  const { items, clearCart } = useCart();
+
+  const [formData, setFormData] =
+    useState<CheckoutCustomer>(initialForm);
+
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const networkFee = items.length > 0 ? 0.016 : 0;
+
+  const subtotal = items.reduce(
+    (sum, item) => sum + Number(item.price) * item.quantity,
+    0
+  );
+
+  const total = subtotal + networkFee;
+
+  const mutation = useMutation({
+    mutationFn: createOrder,
+    onSuccess: (order) => {
+      try {
+        localStorage.setItem(
+          LAST_ORDER_KEY,
+          JSON.stringify(order)
+        );
+      } catch {
+        setErrorMessage(
+          "O pedido foi criado, mas não foi possível salvar os dados da confirmação neste navegador."
+        );
+        return;
+      }
+
+      clearCart();
+      navigate({ to: "/confirmacao" });
+    },
+    onError: () => {
+      setErrorMessage(
+        "Não foi possível registrar o pedido. Verifique os dados e tente novamente."
+      );
+    },
   });
 
-  const [selectedWallet, setSelectedWallet] = useState<'multi' | 'metamask' | 'coinbase'>('coinbase');
+  function updateField<K extends keyof CheckoutCustomer>(
+    field: K,
+    value: CheckoutCustomer[K]
+  ) {
+    setFormData((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
 
-  const purchasedNFTs = [
-    {
-      name: 'Emerald Ape #042',
-      tokenId: '#0042',
-      qty: 2,
-      totalPrice: '2.38 ETH',
-      imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=200&auto=format&fit=crop',
-    },
-    {
-      name: 'Violet Nomad #314',
-      tokenId: '#0314',
-      qty: 6,
-      totalPrice: '8.34 ETH',
-      imageUrl: 'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=80&w=200&auto=format&fit=crop',
-    },
-    {
-      name: 'Ivory Baron #088',
-      tokenId: '#0088',
-      qty: 9,
-      totalPrice: '16.11 ETH',
-      imageUrl: 'https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?q=80&w=200&auto=format&fit=crop',
-    },
-  ];
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    navigate({ to: '/confirmacao' });
-  };
+    if (items.length === 0) {
+      setErrorMessage(
+        "Seu carrinho está vazio. Adicione um NFT antes de continuar."
+      );
+      return;
+    }
+
+    if (
+      !formData.displayName.trim() ||
+      !formData.username.trim() ||
+      !formData.profileName.trim() ||
+      !formData.walletAddress.trim() ||
+      !formData.email.trim()
+    ) {
+      setErrorMessage("Preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    mutation.mutate({
+      customer: {
+        ...formData,
+        displayName: formData.displayName.trim(),
+        username: formData.username.trim(),
+        profileName: formData.profileName.trim(),
+        walletAddress: formData.walletAddress.trim(),
+        email: formData.email.trim(),
+      },
+      items,
+    });
+  }
+
+  if (items.length === 0) {
+    return (
+      <main className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 px-6 py-20 text-center font-mono text-white">
+        <h1 className="text-lg font-bold">Seu carrinho está vazio</h1>
+        <p className="text-xs text-neutral-400">
+          Adicione um NFT antes de iniciar o checkout.
+        </p>
+        <Link
+          to="/"
+          className="rounded-lg bg-amber-600 px-5 py-3 text-xs font-bold text-neutral-950 hover:bg-amber-500"
+        >
+          Explorar NFTs
+        </Link>
+      </main>
+    );
+  }
 
   return (
-    <main className="max-w-[1440px] mx-auto px-6 md:px-12 lg:px-24 py-8 flex flex-col gap-12 w-full font-mono text-white">
-      
-      {/* 1. Breadcrumb */}
+    <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-10 px-6 py-8 font-mono text-white md:px-12 lg:px-24">
       <nav aria-label="Breadcrumb" className="text-xs text-neutral-400">
-        <a href="/" className="hover:text-white transition-colors">Início</a>
+        <Link to="/" className="hover:text-white">
+          Início
+        </Link>
         <span className="mx-2">/</span>
-        <a href="#mercado" className="hover:text-white transition-colors">Mercado</a>
+        <Link to="/carrinho" className="hover:text-white">
+          Carrinho
+        </Link>
         <span className="mx-2">/</span>
-        <span className="text-neutral-200">Pagamento</span>
+        <span className="text-neutral-200">Checkout</span>
       </nav>
 
-      {/* 2. Formulário e Resumo */}
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-        
-        {/* Coluna da Esquerda: Perfil do Colecionador (7 Colunas) */}
-        <div className="lg:col-span-7 flex flex-col gap-6">
-          <h2 className="text-sm font-bold text-white tracking-wide">
+      <h1 className="text-lg font-bold">Finalizar compra</h1>
+
+      <form
+        onSubmit={handleSubmit}
+        className="grid grid-cols-1 items-start gap-10 lg:grid-cols-12"
+      >
+        <section className="flex flex-col gap-5 lg:col-span-7">
+          <h2 className="text-sm font-bold">
             Perfil do colecionador
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            
-            {/* Nome de exibição */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Nome de exibição<span className="text-amber-500">*</span></label>
+          <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Nome de exibição *
+              </span>
               <input
-                type="text"
                 required
+                autoComplete="name"
                 value={formData.displayName}
-                onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
+                onChange={(e) => updateField("displayName", e.target.value)}
+                className={inputClass}
               />
-            </div>
+            </label>
 
-            {/* Nome de usuário */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Nome de usuário<span className="text-amber-500">*</span></label>
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Nome de usuário *
+              </span>
               <input
-                type="text"
                 required
+                autoComplete="username"
                 value={formData.username}
-                onChange={e => setFormData({ ...formData, username: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
+                onChange={(e) => updateField("username", e.target.value)}
+                className={inputClass}
               />
-            </div>
+            </label>
 
-            {/* Rede */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Rede <span className="text-amber-500">*</span></label>
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Rede *
+              </span>
               <div className="relative">
                 <select
                   value={formData.network}
-                  onChange={e => setFormData({ ...formData, network: e.target.value })}
-                  className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-300 outline-none appearance-none cursor-pointer focus:border-amber-600"
+                  onChange={(e) =>
+                    updateField(
+                      "network",
+                      e.target.value as CheckoutCustomer["network"]
+                    )
+                  }
+                  className={`${inputClass} appearance-none`}
                 >
                   <option value="Ethereum">Ethereum</option>
                   <option value="Polygon">Polygon</option>
                   <option value="Solana">Solana</option>
                 </select>
-                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
               </div>
-            </div>
+            </label>
 
-            {/* Nome do perfil */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Nome do perfil<span className="text-amber-500">*</span></label>
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Nome do perfil *
+              </span>
               <input
-                type="text"
                 required
                 value={formData.profileName}
-                onChange={e => setFormData({ ...formData, profileName: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
+                onChange={(e) => updateField("profileName", e.target.value)}
+                className={inputClass}
               />
-            </div>
+            </label>
 
-            {/* Endereço da carteira */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Endereço da carteira<span className="text-amber-500">*</span></label>
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="block text-neutral-300">
+                Endereço da carteira *
+              </span>
               <input
-                type="text"
                 required
-                placeholder="Endereço 0x da carteira"
+                minLength={10}
+                autoComplete="off"
+                placeholder="Endereço público da sua carteira"
                 value={formData.walletAddress}
-                onChange={e => setFormData({ ...formData, walletAddress: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 placeholder-neutral-500 outline-none focus:border-amber-600"
+                onChange={(e) =>
+                  updateField("walletAddress", e.target.value)
+                }
+                className={inputClass}
               />
-            </div>
+              <span className="block text-[10px] text-neutral-500">
+                Informe apenas o endereço público. Nunca informe sua frase
+                de recuperação ou chave privada.
+              </span>
+            </label>
 
-            {/* ENS ou carteira secundária */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">ENS ou carteira secundária (opcional)</label>
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Carteira secundária (opcional)
+              </span>
               <input
-                type="text"
                 value={formData.secondaryWallet}
-                onChange={e => setFormData({ ...formData, secondaryWallet: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
+                onChange={(e) =>
+                  updateField("secondaryWallet", e.target.value)
+                }
+                className={inputClass}
               />
-            </div>
+            </label>
 
-            {/* Tipo de carteira */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Tipo de carteira<span className="text-amber-500">*</span></label>
-              <div className="relative">
-                <select
-                  value={formData.walletType}
-                  onChange={e => setFormData({ ...formData, walletType: e.target.value })}
-                  className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-300 outline-none appearance-none cursor-pointer focus:border-amber-600"
-                >
-                  <option value="Coinbase">Coinbase Wallet</option>
-                  <option value="MetaMask">MetaMask</option>
-                  <option value="WalletConnect">WalletConnect</option>
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-neutral-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            </div>
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Tipo de carteira *
+              </span>
+              <select
+                value={formData.walletType}
+                onChange={(e) =>
+                  updateField(
+                    "walletType",
+                    e.target.value as CheckoutCustomer["walletType"]
+                  )
+                }
+                className={inputClass}
+              >
+                <option value="Coinbase">Coinbase Wallet</option>
+                <option value="MetaMask">MetaMask</option>
+                <option value="WalletConnect">WalletConnect</option>
+              </select>
+            </label>
 
-            {/* Código de indicação */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Código de indicação<span className="text-amber-500">*</span></label>
-              <input
-                type="text"
-                required
-                value={formData.referralCode}
-                onChange={e => setFormData({ ...formData, referralCode: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
-              />
-            </div>
-
-            {/* E-mail */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">E-mail<span className="text-amber-500">*</span></label>
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                E-mail *
+              </span>
               <input
                 type="email"
                 required
+                autoComplete="email"
                 value={formData.email}
-                onChange={e => setFormData({ ...formData, email: e.target.value })}
-                className="w-full bg-[#1A110B] border border-white/10 rounded-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
+                onChange={(e) => updateField("email", e.target.value)}
+                className={inputClass}
               />
-            </div>
+            </label>
 
-            {/* Nome ENS */}
-            <div className="space-y-1.5">
-              <label className="text-neutral-300">Nome ENS <span className="text-amber-500">*</span></label>
-              <div className="relative flex">
-                <input
-                  type="text"
-                  placeholder="seu-nome"
-                  value={formData.ensName}
-                  onChange={e => setFormData({ ...formData, ensName: e.target.value })}
-                  className="w-full bg-[#1A110B] border border-white/10 rounded-l-md px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600"
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Código de indicação (opcional)
+              </span>
+              <input
+                value={formData.referralCode}
+                onChange={(e) =>
+                  updateField("referralCode", e.target.value)
+                }
+                className={inputClass}
+              />
+            </label>
+
+            <label className="space-y-1.5">
+              <span className="block text-neutral-300">
+                Nome ENS (opcional)
+              </span>
+              <input
+                placeholder="seu-nome.eth"
+                value={formData.ensName}
+                onChange={(e) => updateField("ensName", e.target.value)}
+                className={inputClass}
+              />
+            </label>
+
+            <label className="flex items-center gap-2 text-neutral-300 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={formData.useOtherWallet}
+                onChange={(e) =>
+                  updateField("useOtherWallet", e.target.checked)
+                }
+                className="accent-amber-500"
+              />
+              Usar outra carteira
+            </label>
+
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="block text-neutral-300">
+                Observações (opcional)
+              </span>
+              <textarea
+                rows={3}
+                value={formData.notes}
+                onChange={(e) => updateField("notes", e.target.value)}
+                className={`${inputClass} resize-y`}
+              />
+            </label>
+          </div>
+
+          {errorMessage && (
+            <p
+              role="alert"
+              className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-300"
+            >
+              {errorMessage}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={mutation.isPending || items.length === 0}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 py-3.5 text-xs font-bold uppercase tracking-wider text-neutral-950 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {mutation.isPending && (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            )}
+            {mutation.isPending ? "Registrando pedido..." : "Confirmar compra"}
+          </button>
+        </section>
+
+        <aside className="flex flex-col gap-5 rounded-xl border border-white/10 bg-[#1C120C] p-5 lg:col-span-5">
+          <h2 className="text-sm font-bold">Resumo do pedido</h2>
+
+          <div className="space-y-4">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 text-xs"
+              >
+                <img
+                  src={item.imageUrl}
+                  alt={item.name}
+                  className="h-12 w-12 rounded-lg border border-white/10 object-cover"
                 />
-                <span className="bg-[#241710] border border-l-0 border-white/10 px-3 py-2.5 text-xs text-neutral-400 rounded-r-md flex items-center">
-                  .eth
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold">{item.name}</p>
+                  <p className="text-neutral-400">
+                    Edição {item.edition} · Quantidade {item.quantity}
+                  </p>
+                  <p className="text-neutral-500">
+                    {Number(item.price).toFixed(3)} ETH por unidade
+                  </p>
+                </div>
+                <span className="shrink-0 font-bold text-amber-500">
+                  {(Number(item.price) * item.quantity).toFixed(3)} ETH
                 </span>
               </div>
+            ))}
+          </div>
+
+          <div className="space-y-3 border-t border-white/10 pt-4 text-xs">
+            <div className="flex justify-between">
+              <span className="text-neutral-400">Subtotal</span>
+              <span>{subtotal.toFixed(3)} ETH</span>
             </div>
-
-          </div>
-
-          {/* Opção Usar outra carteira */}
-          <div className="flex items-center gap-2 pt-2 text-xs text-neutral-300">
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, useOtherWallet: !formData.useOtherWallet })}
-              className={`w-3.5 h-3.5 rounded-full border transition-colors flex items-center justify-center ${
-                formData.useOtherWallet ? 'border-amber-500 bg-amber-500' : 'border-amber-600'
-              }`}
-            >
-              {formData.useOtherWallet && <Check className="w-2.5 h-2.5 text-black" />}
-            </button>
-            <span>Usar outra carteira?</span>
-          </div>
-
-          {/* Observação do colecionador */}
-          <div className="space-y-1.5 pt-2 text-xs">
-            <label className="text-neutral-300">Observação do colecionador (opcional)</label>
-            <textarea
-              rows={4}
-              value={formData.notes}
-              onChange={e => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full bg-[#1A110B] border border-white/10 rounded-md p-3 text-xs text-neutral-200 outline-none focus:border-amber-600 resize-none"
-            />
-          </div>
-
-        </div>
-
-        {/* Coluna da Direita: Seus NFTs + Resumo + Seleção de Carteira (5 Colunas) */}
-        <div className="lg:col-span-5 flex flex-col gap-6">
-          
-          {/* Seus NFTs */}
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-xs text-neutral-400 font-bold border-b border-white/10 pb-2">
-              <span>Seus NFTs</span>
-              <span>Subtotal</span>
+            <div className="flex justify-between">
+              <span className="text-neutral-400">Taxa de rede estimada</span>
+              <span>{networkFee.toFixed(3)} ETH</span>
             </div>
-
-            <div className="space-y-3">
-              {purchasedNFTs.map((nft, i) => (
-                <div key={i} className="flex items-center justify-between text-xs gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-neutral-900 border border-white/5 shrink-0">
-                      <img src={nft.imageUrl} alt={nft.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-white text-[11px] leading-snug">{nft.name}</p>
-                      <span className="text-[10px] text-neutral-400">ID do token: {nft.tokenId}</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-neutral-400 text-[10px] mr-2">(x {nft.qty})</span>
-                    <span className="font-bold text-amber-500">{nft.totalPrice}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex justify-between border-t border-white/10 pt-4 text-sm font-bold">
+              <span>Total</span>
+              <span className="text-amber-500">
+                {total.toFixed(3)} ETH
+              </span>
             </div>
           </div>
 
-          {/* Cupom Link */}
-          <div className="text-right text-[11px] text-neutral-400 hover:text-amber-500 cursor-pointer transition-colors">
-            Tem um código promocional? Aplique aqui
-          </div>
-
-          {/* Valores Financeiros */}
-          <div className="space-y-2.5 text-xs border-t border-white/5 pt-3">
-            <div className="flex justify-between text-neutral-300">
-              <span>Subtotal</span>
-              <span className="font-bold text-white">26.83 ETH</span>
-            </div>
-            <div className="flex justify-between text-neutral-300">
-              <span>Desconto do lançamento</span>
-              <span className="text-neutral-400">(-) 00.00</span>
-            </div>
-            <div className="flex justify-between items-start text-neutral-300">
-              <div className="flex flex-col">
-                <span>Taxa de rede</span>
-                <span className="text-[10px] text-amber-600/80">Taxa estimada</span>
-              </div>
-              <span className="font-bold text-neutral-200">0.016 ETH</span>
-            </div>
-            <div className="flex justify-between items-center border-t border-white/10 pt-3">
-              <span className="text-sm font-bold text-white">Total</span>
-              <span className="text-base font-extrabold text-amber-500">26.846 ETH</span>
-            </div>
-          </div>
-
-          {/* Carteira e Rede (Seletor) */}
-          <div className="space-y-3 pt-2">
-            <h3 className="text-xs font-bold text-neutral-200">Carteira e rede</h3>
-            
-            <div className="space-y-2">
-              {/* Opção 1: Multi-carteiras */}
-              <label 
-                onClick={() => setSelectedWallet('multi')}
-                className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
-                  selectedWallet === 'multi' ? 'border-amber-600/60 bg-[#1F140D]' : 'border-white/10 bg-[#160E0A]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center ${selectedWallet === 'multi' ? 'border-amber-500' : 'border-neutral-500'}`}>
-                    {selectedWallet === 'multi' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-                  </span>
-                  <div className="inline-block bg-[#241710] border border-amber-900/40 px-2 py-0.5 rounded text-[9px] text-amber-500 font-bold">
-                    METAMASK &nbsp;•&nbsp; WALLETCONNECT &nbsp;•&nbsp; COINBASE
-                  </div>
-                </div>
-              </label>
-
-              {/* Opção 2: MetaMask */}
-              <label 
-                onClick={() => setSelectedWallet('metamask')}
-                className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
-                  selectedWallet === 'metamask' ? 'border-amber-600/60 bg-[#1F140D]' : 'border-white/10 bg-[#160E0A]'
-                }`}
-              >
-                <div className="flex items-center gap-3 text-xs text-neutral-300">
-                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center ${selectedWallet === 'metamask' ? 'border-amber-500' : 'border-neutral-500'}`}>
-                    {selectedWallet === 'metamask' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-                  </span>
-                  <span>MetaMask</span>
-                </div>
-              </label>
-
-              {/* Opção 3: Coinbase Wallet (Selecionada) */}
-              <label 
-                onClick={() => setSelectedWallet('coinbase')}
-                className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
-                  selectedWallet === 'coinbase' ? 'border-amber-600/60 bg-[#1F140D]' : 'border-white/10 bg-[#160E0A]'
-                }`}
-              >
-                <div className="flex items-center gap-3 text-xs text-neutral-300">
-                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center ${selectedWallet === 'coinbase' ? 'border-amber-500' : 'border-neutral-500'}`}>
-                    {selectedWallet === 'coinbase' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-                  </span>
-                  <span>Coinbase Wallet</span>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Botão Confirmar Compra */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              className="w-full bg-amber-600 hover:bg-amber-500 text-neutral-950 font-bold text-xs py-3.5 rounded-lg uppercase tracking-wider transition-colors shadow-md cursor-pointer"
-            >
-              Confirmar compra
-            </button>
-          </div>
-
-        </div>
-
+          <Link
+            to="/carrinho"
+            className="text-center text-xs text-neutral-400 hover:text-white"
+          >
+            Voltar ao carrinho
+          </Link>
+        </aside>
       </form>
     </main>
   );
