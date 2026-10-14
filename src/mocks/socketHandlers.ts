@@ -10,9 +10,6 @@ export interface NFTUpdatedEvent {
   version: number;
 }
 
-const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-const socketURL = `${protocol}//${window.location.host}/socket.io/`;
-
 const socketLink = ws.link("*/socket.io/");
 
 socketLink.addEventListener("connection", (connection) => {
