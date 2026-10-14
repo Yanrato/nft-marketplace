@@ -125,15 +125,17 @@ export function OrderConfirmationPage() {
 
   useEffect(() => {
     if (!orderId || orderStatus !== "pending") {
-      return;
-    }
+  return;
+}
 
-    let cancelled = false;
+const currentOrderId = orderId;
+
+let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     async function checkStatus() {
       try {
-        const updatedOrder = await getOrderStatus(orderId);
+        const updatedOrder = await getOrderStatus(currentOrderId);
 
         if (cancelled) {
           return;
