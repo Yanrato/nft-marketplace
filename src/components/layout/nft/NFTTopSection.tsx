@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Star, Minus, Plus, Heart, ZoomIn, Mail } from "lucide-react";
 import type { NFT } from "@/contracts/nft";
+import { useNavigate } from "@tanstack/react-router";
+import { useCart } from "@/features/cart/CartContext";
 
 interface NFTTopSectionProps {
   nft: NFT;
@@ -14,7 +16,10 @@ export function NFTTopSection({ nft }: NFTTopSectionProps) {
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
 
-const galleryImages = [nft.imageUrl];
+  const { addItem } = useCart();
+  const navigate = useNavigate();
+
+  const galleryImages = [nft.imageUrl];
   const editions = nft.editions;
 
   const currentImage =
@@ -33,11 +38,10 @@ const galleryImages = [nft.imageUrl];
               onClick={() => setSelectedImage(idx)}
               aria-label={`Selecionar imagem ${idx + 1}`}
               aria-pressed={selectedImage === idx}
-              className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-neutral-900 border transition-all ${
-                selectedImage === idx
-                  ? "border-amber-500 scale-95 shadow-md"
-                  : "border-white/10 hover:border-white/30"
-              }`}
+              className={`w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden bg-neutral-900 border transition-all ${selectedImage === idx
+                ? "border-amber-500 scale-95 shadow-md"
+                : "border-white/10 hover:border-white/30"
+                }`}
             >
               <img
                 src={img}
@@ -119,11 +123,10 @@ const galleryImages = [nft.imageUrl];
                 type="button"
                 onClick={() => setSelectedEdition(edition)}
                 aria-pressed={selectedEdition === edition}
-                className={`px-3 py-1.5 rounded-full border transition-colors ${
-                  selectedEdition === edition
-                    ? "border-amber-500 text-amber-500 bg-amber-500/10 font-bold"
-                    : "border-white/10 text-neutral-400 hover:border-white/30 hover:text-white"
-                }`}
+                className={`px-3 py-1.5 rounded-full border transition-colors ${selectedEdition === edition
+                  ? "border-amber-500 text-amber-500 bg-amber-500/10 font-bold"
+                  : "border-white/10 text-neutral-400 hover:border-white/30 hover:text-white"
+                  }`}
               >
                 {edition}
               </button>
@@ -163,87 +166,82 @@ const galleryImages = [nft.imageUrl];
           <button
             type="button"
             onClick={() => {
-              console.info("Compra ainda precisa ser conectada ao carrinho:", {
-                nftId: nft.id,
-                quantity,
-                edition: selectedEdition,
-              });
+              addItem(nft, quantity, selectedEdition);
+              navigate({ to: "/carrinho" });
             }}
-            className="flex-1 bg-amber-600 hover:bg-amber-500 text-neutral-950 font-bold text-xs py-3 px-6 rounded-lg uppercase tracking-wider transition-colors shadow-md"
+          className="flex-1 bg-amber-600 hover:bg-amber-500 text-neutral-950 font-bold text-xs py-3 px-6 rounded-lg uppercase tracking-wider transition-colors shadow-md"
           >
-            COMPRAR
-          </button>
+          COMPRAR
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsFavorite((current) => !current)}
+          aria-pressed={isFavorite}
+          className={`p-3 rounded-lg border text-xs flex items-center gap-1.5 transition-colors ${isFavorite
+            ? "border-amber-500 text-amber-500 bg-amber-500/10"
+            : "border-white/15 text-neutral-300 hover:border-amber-500 hover:text-white"
+            }`}
+        >
+          <Heart
+            className={`w-4 h-4 ${isFavorite ? "fill-current" : ""
+              }`}
+          />
+          <span>Favoritar</span>
+        </button>
+      </div>
+
+      {/* Metadados Técnicos */}
+      <div className="space-y-1.5 text-xs text-neutral-400 border-t border-white/5 pt-4">
+        <p>
+          <strong className="text-neutral-300">ID do token:</strong>{" "}
+          #{nft.tokenId}
+        </p>
+
+        <p>
+          <strong className="text-neutral-300">Coleção:</strong>{" "}
+          {nft.collection}
+        </p>
+
+        <p>
+          <strong className="text-neutral-300">Categoria:</strong>{" "}
+          {nft.category}
+        </p>
+
+        <p>
+          <strong className="text-neutral-300">Rede:</strong>{" "}
+          {nft.network}
+        </p>
+
+        <p>
+          <strong className="text-neutral-300">Contrato:</strong>{" "}
+          {nft.contractAddress}
+        </p>
+
+        <div className="flex items-center gap-2 pt-2 text-xs">
+          <span className="text-neutral-300">
+            Compartilhar este NFT:
+          </span>
 
           <button
             type="button"
-            onClick={() => setIsFavorite((current) => !current)}
-            aria-pressed={isFavorite}
-            className={`p-3 rounded-lg border text-xs flex items-center gap-1.5 transition-colors ${
-              isFavorite
-                ? "border-amber-500 text-amber-500 bg-amber-500/10"
-                : "border-white/15 text-neutral-300 hover:border-amber-500 hover:text-white"
-            }`}
+            aria-label="Compartilhar NFT por e-mail"
+            onClick={() => {
+              const subject = encodeURIComponent(nft.name);
+              const body = encodeURIComponent(
+                `Confira este NFT: ${window.location.href}`
+              );
+
+              window.location.href = `mailto:?subject=${subject}&body=${body}`;
+            }}
+            className="text-neutral-400 hover:text-white"
           >
-            <Heart
-              className={`w-4 h-4 ${
-                isFavorite ? "fill-current" : ""
-              }`}
-            />
-            <span>Favoritar</span>
+            <Mail className="w-4 h-4" />
           </button>
         </div>
-
-        {/* Metadados Técnicos */}
-        <div className="space-y-1.5 text-xs text-neutral-400 border-t border-white/5 pt-4">
-          <p>
-            <strong className="text-neutral-300">ID do token:</strong>{" "}
-            #{nft.tokenId}
-          </p>
-
-          <p>
-            <strong className="text-neutral-300">Coleção:</strong>{" "}
-            {nft.collection}
-          </p>
-
-          <p>
-            <strong className="text-neutral-300">Categoria:</strong>{" "}
-            {nft.category}
-          </p>
-
-          <p>
-            <strong className="text-neutral-300">Rede:</strong>{" "}
-            {nft.network}
-          </p>
-
-          <p>
-            <strong className="text-neutral-300">Contrato:</strong>{" "}
-            {nft.contractAddress}
-          </p>
-
-          <div className="flex items-center gap-2 pt-2 text-xs">
-            <span className="text-neutral-300">
-              Compartilhar este NFT:
-            </span>
-
-            <button
-              type="button"
-              aria-label="Compartilhar NFT por e-mail"
-              onClick={() => {
-                const subject = encodeURIComponent(nft.name);
-                const body = encodeURIComponent(
-                  `Confira este NFT: ${window.location.href}`
-                );
-
-                window.location.href = `mailto:?subject=${subject}&body=${body}`;
-              }}
-              className="text-neutral-400 hover:text-white"
-            >
-              <Mail className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
-    </section>
+    </div>
+    </section >
   );
 }
 

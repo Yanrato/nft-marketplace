@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
+import { CartProvider } from "@/features/cart/CartContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,6 +20,11 @@ const queryClient = new QueryClient({
   },
 });
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+
+ export function AppProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CartProvider>{children}</CartProvider>
+    </QueryClientProvider>
+  );
 }
