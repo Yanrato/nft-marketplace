@@ -1,11 +1,13 @@
+
 import { useState } from "react";
-import { Outlet, useNavigate, useLocation } from "@tanstack/react-router";
+import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { Navbar } from "./components/layout/navbar/Navbar";
 import { MobileSearchBar } from "./components/layout/mobile/MobileSearchBar";
 import { Footer } from "./components/layout/footer/Footer";
 import { MobileBottomNav } from "./components/layout/mobile/MobileBottomNav";
 import { AuthModal } from "./components/layout/auth/AuthModal";
-import { useCart } from "@/features/cart/CartContext";
+import { useCart } from "@/features/cart/useCart";
+import { useAuth } from "@/features/auth/useAuth";
 
 export function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -14,6 +16,7 @@ export function App() {
   const location = useLocation();
 
   const { itemCount } = useCart();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const activeTab =
     location.pathname === "/"
@@ -22,12 +25,21 @@ export function App() {
         ? "Mercado"
         : "";
 
+  function handleLogout() {
+    logout();
+    setIsAuthOpen(false);
+    void navigate({ to: "/" });
+  }
+
   return (
-    <div className="min-h-screen bg-[#140D0A] text-white pb-20 md:pb-0 flex flex-col justify-between">
+    <div className="flex min-h-screen flex-col justify-between bg-[#140D0A] pb-20 text-white md:pb-0">
       <Navbar
         activeTab={activeTab}
         cartCount={itemCount}
+        isAuthenticated={isAuthenticated}
+        username={user?.username}
         onLoginClick={() => setIsAuthOpen(true)}
+        onLogout={handleLogout}
       />
 
       <MobileSearchBar />
@@ -36,11 +48,11 @@ export function App() {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => {
-          navigate({ to: "/perfil" });
+          void navigate({ to: "/perfil" });
         }}
       />
 
-      <div className="flex-1 w-full">
+      <div className="w-full flex-1">
         <Outlet />
       </div>
 

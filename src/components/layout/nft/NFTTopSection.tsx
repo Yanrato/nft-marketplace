@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Star, Minus, Plus, Heart, ZoomIn, Mail } from "lucide-react";
 import type { NFT } from "@/contracts/nft";
 import { useNavigate } from "@tanstack/react-router";
-import { useCart } from "@/features/cart/CartContext";
+import { useCart } from "@/features/cart/useCart";
 
 interface NFTTopSectionProps {
   nft: NFT;

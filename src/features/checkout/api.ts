@@ -1,5 +1,6 @@
+
 import { api } from "@/lib/api";
-import type { CartItem } from "@/features/cart/CartContext";
+import type { CartItem } from "@/features/cart/cart-context";
 
 export interface CheckoutCustomer {
   displayName: string;
@@ -16,13 +17,17 @@ export interface CheckoutCustomer {
   notes: string;
 }
 
+export type OrderStatus = "pending" | "confirmed" | "rejected";
+
 export interface CreateOrderPayload {
   customer: CheckoutCustomer;
   items: CartItem[];
+  idempotencyKey: string;
 }
 
 export interface CreatedOrder {
   id: string;
+  idempotencyKey: string;
   createdAt: string;
   customer: CheckoutCustomer;
   items: CartItem[];
@@ -30,15 +35,27 @@ export interface CreatedOrder {
   discount: string;
   networkFee: string;
   total: string;
-  status: "confirmed";
+  status: OrderStatus;
+  statusMessage?: string;
 }
 
 export async function createOrder(
   payload: CreateOrderPayload
 ): Promise<CreatedOrder> {
-  const response = await api.post<CreatedOrder>(
-    "/orders",
-    payload
+  const response = await api.post<CreatedOrder>("/orders", payload, {
+    headers: {
+      "Idempotency-Key": payload.idempotencyKey,
+    },
+  });
+
+  return response.data;
+}
+
+export async function getOrderStatus(
+  orderId: string
+): Promise<CreatedOrder> {
+  const response = await api.get<CreatedOrder>(
+    `/orders/${encodeURIComponent(orderId)}`
   );
 
   return response.data;

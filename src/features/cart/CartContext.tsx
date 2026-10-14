@@ -1,35 +1,10 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
   type ReactNode,
 } from "react";
 import type { NFT } from "@/contracts/nft";
-
-export interface CartItem {
-  id: string;
-  nftId: string;
-  name: string;
-  tokenId: string;
-  price: string;
-  quantity: number;
-  imageUrl: string;
-  edition: string;
-}
-
-interface CartContextType {
-  items: CartItem[];
-  itemCount: number;
-  addItem: (nft: NFT, quantity: number, edition: string) => void;
-  updateQuantity: (id: string, delta: number) => void;
-  removeItem: (id: string) => void;
-  clearCart: () => void;
-}
-
-const CartContext = createContext<CartContextType | undefined>(
-  undefined
-);
+import { CartContext, type CartItem } from "./cart-context";
 
 const STORAGE_KEY = "kurio-cart";
 
@@ -147,14 +122,4 @@ export function CartProvider({ children }: { children: ReactNode }) {
       {children}
     </CartContext.Provider>
   );
-}
-
-export function useCart() {
-  const context = useContext(CartContext);
-
-  if (!context) {
-    throw new Error("useCart deve ser usado dentro de CartProvider.");
-  }
-
-  return context;
 }

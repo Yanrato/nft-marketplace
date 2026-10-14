@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Trash2, Minus, Plus } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ProductCard, type NFTItem } from "../components/layout/products/ProductCard";
-import { useCart } from "@/features/cart/CartContext";
+import { useCart } from "@/features/cart/useCart";
 
 const recommendedNFTs: NFTItem[] = [
   {

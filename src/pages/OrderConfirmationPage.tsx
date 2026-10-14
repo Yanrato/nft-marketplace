@@ -1,7 +1,19 @@
+
 import { Link } from "@tanstack/react-router";
-import { CheckCircle2, ExternalLink, ShoppingBag, X } from "lucide-react";
-import { useState } from "react";
-import type { CreatedOrder } from "@/features/checkout/api";
+import {
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
+  ShoppingBag,
+  X,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  getOrderStatus,
+  type CreatedOrder,
+  type OrderStatus,
+} from "@/features/checkout/api";
 
 const LAST_ORDER_KEY = "kurio_last_order";
 
@@ -26,7 +38,9 @@ function readLastOrder(): CreatedOrder | null {
       !("networkFee" in parsed) ||
       !("total" in parsed) ||
       !("customer" in parsed) ||
-      !Array.isArray(parsed.items)
+      !("status" in parsed) ||
+      !Array.isArray(parsed.items) ||
+      !["pending", "confirmed", "rejected"].includes(String(parsed.status))
     ) {
       return null;
     }
@@ -63,8 +77,99 @@ function formatDate(value: string): string {
   });
 }
 
+function getStatusLabel(status: OrderStatus): string {
+  switch (status) {
+    case "pending":
+      return "Pendente";
+    case "confirmed":
+      return "Confirmado";
+    case "rejected":
+      return "Rejeitado";
+  }
+}
+
+function getStatusTitle(status: OrderStatus): string {
+  switch (status) {
+    case "pending":
+      return "Aguardando confirmação";
+    case "confirmed":
+      return "Pedido confirmado!";
+    case "rejected":
+      return "Pedido não concluído";
+  }
+}
+
+function getStatusDescription(order: CreatedOrder): string {
+  if (order.statusMessage) {
+    return order.statusMessage;
+  }
+
+  switch (order.status) {
+    case "pending":
+      return "Estamos processando seu pedido. Esta página será atualizada quando houver uma resposta.";
+    case "confirmed":
+      return "Seu pedido foi registrado com sucesso. Confira abaixo os detalhes da compra.";
+    case "rejected":
+      return "Não foi possível concluir sua compra. Confira os detalhes abaixo.";
+  }
+}
+
 export function OrderConfirmationPage() {
-  const [order] = useState<CreatedOrder | null>(() => readLastOrder());
+  const [order, setOrder] = useState<CreatedOrder | null>(() =>
+    readLastOrder()
+  );
+  const [statusCheckError, setStatusCheckError] = useState(false);
+
+  const orderId = order?.id;
+  const orderStatus = order?.status;
+
+  useEffect(() => {
+    if (!orderId || orderStatus !== "pending") {
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    async function checkStatus() {
+      try {
+        const updatedOrder = await getOrderStatus(orderId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setOrder(updatedOrder);
+        setStatusCheckError(false);
+
+        localStorage.setItem(
+          LAST_ORDER_KEY,
+          JSON.stringify(updatedOrder)
+        );
+
+        if (updatedOrder.status === "pending") {
+          timeoutId = setTimeout(checkStatus, 1200);
+        }
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        setStatusCheckError(true);
+        timeoutId = setTimeout(checkStatus, 2500);
+      }
+    }
+
+    timeoutId = setTimeout(checkStatus, 500);
+
+    return () => {
+      cancelled = true;
+
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [orderId, orderStatus]);
 
   if (!order) {
     return (
@@ -90,10 +195,40 @@ export function OrderConfirmationPage() {
     );
   }
 
+  const isPending = order.status === "pending";
+  const isConfirmed = order.status === "confirmed";
+  const isRejected = order.status === "rejected";
+
+  const statusBorderClass = isPending
+    ? "border-sky-500/40 bg-sky-500/10"
+    : isConfirmed
+      ? "border-amber-500/40 bg-amber-500/10"
+      : "border-red-500/40 bg-red-500/10";
+
+  const statusIconClass = isPending
+    ? "text-sky-400"
+    : isConfirmed
+      ? "text-amber-500"
+      : "text-red-400";
+
+  const statusLabelClass = isPending
+    ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+    : isConfirmed
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+      : "border-red-500/30 bg-red-500/10 text-red-300";
+
   return (
     <main className="flex w-full items-center justify-center px-4 py-8 font-mono text-white sm:px-6">
       <section className="relative flex w-full max-w-2xl flex-col gap-6 overflow-hidden rounded-2xl border border-amber-900/30 bg-[#19100B] p-5 shadow-2xl sm:p-8">
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-amber-600" />
+        <div
+          className={`absolute bottom-0 left-0 right-0 h-1 ${
+            isPending
+              ? "bg-sky-500"
+              : isConfirmed
+                ? "bg-amber-600"
+                : "bg-red-500"
+          }`}
+        />
 
         <Link
           to="/"
@@ -104,19 +239,40 @@ export function OrderConfirmationPage() {
         </Link>
 
         <header className="flex flex-col items-center gap-3 pt-3 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-500/40 bg-amber-500/10">
-            <CheckCircle2 className="h-9 w-9 text-amber-500" />
+          <div
+            className={`flex h-16 w-16 items-center justify-center rounded-2xl border ${statusBorderClass}`}
+          >
+            {isPending ? (
+              <Clock3 className={`h-9 w-9 ${statusIconClass}`} />
+            ) : isConfirmed ? (
+              <CheckCircle2 className={`h-9 w-9 ${statusIconClass}`} />
+            ) : (
+              <XCircle className={`h-9 w-9 ${statusIconClass}`} />
+            )}
           </div>
 
-          <h1 className="text-lg font-bold">Pedido confirmado!</h1>
+          <h1 className="text-lg font-bold">
+            {getStatusTitle(order.status)}
+          </h1>
 
           <p className="max-w-md text-xs leading-6 text-neutral-300">
-            Seu pedido foi registrado com sucesso. Confira abaixo os
-            detalhes da compra.
+            {getStatusDescription(order)}
           </p>
 
-          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-400">
-            Pedido {order.status === "confirmed" ? "confirmado" : order.status}
+          {statusCheckError && isPending && (
+            <p
+              role="status"
+              className="max-w-md text-xs leading-5 text-amber-300"
+            >
+              Não conseguimos consultar o pedido neste momento. Vamos tentar
+              novamente automaticamente.
+            </p>
+          )}
+
+          <span
+            className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${statusLabelClass}`}
+          >
+            Pedido {getStatusLabel(order.status)}
           </span>
         </header>
 
@@ -180,9 +336,11 @@ export function OrderConfirmationPage() {
                     <h3 className="truncate text-[11px] font-bold">
                       {item.name}
                     </h3>
+
                     <p className="mt-1 text-[10px] text-neutral-400">
                       Token: {item.tokenId}
                     </p>
+
                     <p className="text-[10px] text-neutral-500">
                       Edição {item.edition}
                     </p>
@@ -221,15 +379,13 @@ export function OrderConfirmationPage() {
 
           <div className="flex justify-between gap-4 border-t border-white/10 pt-4 text-sm font-bold">
             <span>Total</span>
-            <span className="text-amber-500">
-              {formatEth(order.total)}
-            </span>
+            <span className="text-amber-500">{formatEth(order.total)}</span>
           </div>
         </section>
 
         <p className="text-center text-[10px] leading-5 text-neutral-400">
-          Esta é uma confirmação do pedido de demonstração. Nenhuma
-          transação real na blockchain é comprovada por esta tela.
+          Esta é uma confirmação de pedido de demonstração. Nenhuma transação
+          real na blockchain é comprovada por esta tela.
         </p>
 
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -241,6 +397,13 @@ export function OrderConfirmationPage() {
             <ExternalLink className="h-3.5 w-3.5" />
           </Link>
         </div>
+
+        {isRejected && (
+          <p className="text-center text-[10px] leading-5 text-neutral-400">
+            Nenhuma compra foi concluída. Você pode voltar à loja e tentar
+            novamente.
+          </p>
+        )}
       </section>
     </main>
   );

@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useState, useRef, type FormEvent } from "react";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useCart } from "@/features/cart/CartContext";
+import { useCart } from "@/features/cart/useCart";
 import { createOrder, type CheckoutCustomer } from "@/features/checkout/api";
 import { useMutation } from "@tanstack/react-query";
 
@@ -22,12 +22,15 @@ const initialForm: CheckoutCustomer = {
   notes: "",
 };
 
+
 const inputClass =
   "w-full rounded-md border border-white/10 bg-[#1A110B] px-3 py-2.5 text-xs text-neutral-200 outline-none focus:border-amber-600";
 
 export function CheckoutPage() {
   const navigate = useNavigate();
   const { items, clearCart } = useCart();
+
+  const idempotencyKey = useRef(crypto.randomUUID());
 
   const [formData, setFormData] =
     useState<CheckoutCustomer>(initialForm);
@@ -101,6 +104,7 @@ export function CheckoutPage() {
     }
 
     mutation.mutate({
+      idempotencyKey: idempotencyKey.current,
       customer: {
         ...formData,
         displayName: formData.displayName.trim(),
