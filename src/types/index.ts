@@ -1,24 +1,6 @@
-export interface NFT {
-  id: string;
-  name: string;
-  price: string;          // Tratado como string decimal para precisão em ETH
-  originalPrice?: string;
-  collection: string;
-  category: string;
-  network: 'Ethereum' | 'Polygon' | 'Solana';
-  editions: string[];
-  totalEditions: number;
-  availableEditions: number;
-  rating: number;
-  reviewsCount: number;
-  description: string;
-  imageUrl: string;
-  badge?: string;
-  isFavorite?: boolean;
-  contractAddress: string;
-  tokenId: string;
-  creatorFee: string;
-}
+import type { NFT } from "@/contracts/nft";
+
+export type { NFT };
 
 export interface CartItem {
   nftId: string;
@@ -39,5 +21,5 @@ export interface Order {
   walletAddress: string;
   walletType: string;
   network: string;
-  status: 'pending' | 'confirmed' | 'rejected';
+  status: "pending" | "confirmed" | "rejected";
 }

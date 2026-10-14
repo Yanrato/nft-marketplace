@@ -10,7 +10,7 @@ import { CartPage } from "../pages/CartPage";
 import { CheckoutPage } from "../pages/CheckoutPage";
 import { OrderConfirmationPage } from "../pages/OrderConfirmationPage";
 import { ProfilePage } from "../pages/ProfilePage";
-import { homeSearchSchema } from "./features/catalog/search";
+import { homeSearchSchema } from "../features/catalog/search";
 import NotFoundPage from "@/pages/NotFound";
 
 // 1. Rota Raiz (o shell com Navbar e Footer) + página para rotas inexistentes

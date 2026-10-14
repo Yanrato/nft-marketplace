@@ -13,7 +13,6 @@ export const handlers = [
   http.get("/api/nfts", async ({ request }) => {
     await delay(300); // simula a latência da rede
 
-    // 1) Ler e validar os parâmetros da URL
     const url = new URL(request.url);
     const parsed = nftListQuerySchema.safeParse(
       Object.fromEntries(url.searchParams)
@@ -24,9 +23,9 @@ export const handlers = [
         400
       );
     }
-    const { search, category, network, sort, page, limit } = parsed.data;
+    const { search, category, network, minPrice, maxPrice, sort, page, limit } =
+      parsed.data;
 
-    // 2) Filtrar (cada filtro só age se o parâmetro foi enviado)
     let nfts = getStoredNFTs();
 
     if (category && category !== "Todos") {
@@ -44,14 +43,19 @@ export const handlers = [
       );
     }
 
-    // 3) Ordenar (preço comparado com Decimal, nunca com number)
+    // Faixa de preço (Decimal: sem erro de ponto flutuante)
+    if (minPrice) nfts = nfts.filter((n) => new Decimal(n.price).gte(minPrice));
+    if (maxPrice) nfts = nfts.filter((n) => new Decimal(n.price).lte(maxPrice));
+
+    // Ordenação
     if (sort === "price-asc") {
       nfts = [...nfts].sort((a, b) => new Decimal(a.price).comparedTo(b.price));
     } else if (sort === "price-desc") {
       nfts = [...nfts].sort((a, b) => new Decimal(b.price).comparedTo(a.price));
+    } else if (sort === "popular") {
+      nfts = [...nfts].sort((a, b) => b.reviewsCount - a.reviewsCount);
     }
 
-    // 4) Paginar
     const total = nfts.length;
     const start = (page - 1) * limit;
 
@@ -60,6 +64,29 @@ export const handlers = [
       total,
       page,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  }),
+
+  // GET /api/nfts/facets: contagens reais e faixa de preço.
+  // IMPORTANTE: precisa vir ANTES de "/api/nfts/:id", senão "facets" seria tratado como id.
+  http.get("/api/nfts/facets", async () => {
+    await delay(150);
+    const nfts = getStoredNFTs();
+
+    const countBy = (key: "category" | "network") => {
+      const counts = new Map<string, number>();
+      nfts.forEach((n) => counts.set(n[key], (counts.get(n[key]) ?? 0) + 1));
+      return [...counts].map(([name, count]) => ({ name, count }));
+    };
+
+    const prices = nfts.map((n) => new Decimal(n.price));
+    return HttpResponse.json({
+      categories: countBy("category"),
+      networks: countBy("network"),
+      priceRange: {
+        min: Decimal.min(...prices).toString(),
+        max: Decimal.max(...prices).toString(),
+      },
     });
   }),
 

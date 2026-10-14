@@ -16,3 +16,12 @@
 
 ## Decisões de UX
 - Abas "Novos lançamentos" e "Em alta" são atalhos de ordenação (`recent`, `popular`).
+## Decisões de UX e desvios do Figma (catálogo)
+- Contagens, categorias e faixa de preço dos filtros vêm de `GET /api/nfts/facets`
+  (nenhum número fixo nos componentes).
+- Abas e "Ordenar por" compartilham o parâmetro `sort`: "Todos" = sem ordenação,
+  "Novos lançamentos" = `recent`, "Em alta" = `popular`.
+- Faixa de preço usa dois campos numéricos rotulados (acessíveis) no lugar do slider.
+- Em telas menores que `lg`, os filtros abrem em gaveta (`Sheet`) com controle de foco.
+- O botão de favorito dos cards só aparece quando a ação real existir (etapa de favoritos).
+- Skeletons usam shimmer com as mesmas proporções do card e respeitam `prefers-reduced-motion`.

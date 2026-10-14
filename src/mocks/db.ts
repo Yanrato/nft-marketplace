@@ -158,7 +158,10 @@ export const initialNFTs: NFT[] = baseNFTs.map((nft) => ({ ...nft, version: 1 })
 // NFTs gerados de forma determinística (sempre os mesmos),
 // para exercitar filtros e paginação
 // ---------------------------------------------------------------
-const CATEGORIES = ["Arte digital", "Arte 3D", "Fotografia", "Música", "Colecionáveis"];
+const CATEGORIES = [
+  "Arte digital", "Fotografia", "Música", "Arte 3D", "Colecionáveis",
+  "Generativa", "Jogos", "Assinaturas", "Utilidade",
+];
 const NETWORKS = ["Ethereum", "Polygon", "Solana"] as const;
 const IMAGES = initialNFTs.slice(0, 3).map((n) => n.imageUrl);
 
@@ -193,7 +196,7 @@ export const seedNFTs: NFT[] = [...initialNFTs, ...generateNFTs(36)];
 // ---------------------------------------------------------------
 // Gerenciamento com persistência local (sustenta o F5)
 // ---------------------------------------------------------------
-const STORAGE_KEY = 'kurio_nfts_db_v2';
+const STORAGE_KEY = 'kurio_nfts_db_v3';
 
 export function getStoredNFTs(): NFT[] {
   const data = localStorage.getItem(STORAGE_KEY);

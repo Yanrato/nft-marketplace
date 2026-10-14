@@ -1,39 +1,36 @@
-import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
-import type { NFT } from '@/types';
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import type { NFT, NFTFacets, NFTListQuery, NFTListResponse } from "@/contracts/nft";
 
-
-interface GetNFTsParams {
-  category?: string;
-  search?: string;
-  network?: string;
-  page?: number;
-}
-
-interface NFTsResponse {
-  data: NFT[];
-  total: number;
-  page: number;
-  totalPages: number;
-}
-
-export function useNFTs(params: GetNFTsParams = {}) {
+export function useNFTs(params: Partial<NFTListQuery>) {
   return useQuery({
-    queryKey: ['nfts', params],
-    queryFn: async () => {
-      const response = await api.get<NFTsResponse>('/nfts', { params });
-      return response.data;
+    queryKey: ["nfts", params], // toda mudança de parâmetro gera uma chave nova
+    queryFn: async ({ signal }) => {
+      // signal: cancela a requisição anterior se os parâmetros mudarem
+      const res = await api.get<NFTListResponse>("/nfts", { params, signal });
+      return res.data;
     },
-    staleTime: 1000 * 60 * 2, // 2 minutos de cache fresco
+    placeholderData: keepPreviousData, // mantém a lista atual enquanto a próxima carrega
+  });
+}
+
+export function useNFTFacets() {
+  return useQuery({
+    queryKey: ["nft-facets"],
+    queryFn: async ({ signal }) => {
+      const res = await api.get<NFTFacets>("/nfts/facets", { signal });
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
   });
 }
 
 export function useNFT(id: string) {
   return useQuery({
-    queryKey: ['nft', id],
-    queryFn: async () => {
-      const response = await api.get<NFT>(`/nfts/${id}`);
-      return response.data;
+    queryKey: ["nft", id],
+    queryFn: async ({ signal }) => {
+      const res = await api.get<NFT>(`/nfts/${id}`, { signal });
+      return res.data;
     },
     enabled: Boolean(id),
   });

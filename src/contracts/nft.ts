@@ -24,7 +24,7 @@ export const nftSchema = z.object({
   contractAddress: z.string(),
   tokenId: z.string(),
   creatorFee: z.string(),
-  version: z.number().int().default(1), // será usado no tempo real
+  version: z.number().int().default(1), // usado depois no tempo real
 });
 export type NFT = z.infer<typeof nftSchema>;
 
@@ -33,7 +33,9 @@ export const nftListQuerySchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
   network: z.enum(["Ethereum", "Polygon", "Solana"]).optional(),
-  sort: z.enum(["recent", "price-asc", "price-desc"]).default("recent"),
+  minPrice: decimalString.optional(),
+  maxPrice: decimalString.optional(),
+  sort: z.enum(["recent", "price-asc", "price-desc", "popular"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(8),
 });
@@ -44,4 +46,11 @@ export interface NFTListResponse {
   total: number;
   page: number;
   totalPages: number;
+}
+
+// Contagens reais por filtro e faixa de preço do catálogo
+export interface NFTFacets {
+  categories: { name: string; count: number }[];
+  networks: { name: string; count: number }[];
+  priceRange: { min: string; max: string };
 }
