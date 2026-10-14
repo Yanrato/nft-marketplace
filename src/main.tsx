@@ -5,14 +5,19 @@ import { AppProviders } from "./app/providers";
 import { router } from "./app/router";
 import "./index.css";
 
-// Liga o MSW só se VITE_ENABLE_MOCKS=true
 async function enableMocking() {
-  if (import.meta.env.VITE_ENABLE_MOCKS !== "true") return;
+  if (import.meta.env.VITE_ENABLE_MOCKS !== "true") {
+    return;
+  }
+
   const { worker } = await import("./mocks/browser");
-  await worker.start({ onUnhandledFrame: "bypass" });
+
+  await worker.start();
 }
 
-enableMocking().then(() => {
+async function bootstrap() {
+  await enableMocking();
+
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
       <AppProviders>
@@ -20,4 +25,6 @@ enableMocking().then(() => {
       </AppProviders>
     </React.StrictMode>
   );
-});
+}
+
+void bootstrap();
