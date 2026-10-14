@@ -1,3 +1,4 @@
+
 import { createContext } from "react";
 import type { NFT } from "@/contracts/nft";
 
@@ -10,7 +11,13 @@ export interface CartItem {
   quantity: number;
   imageUrl: string;
   edition: string;
+  availableEditions?: number;
 }
+
+export type PurchasedCartItem = Pick<
+  CartItem,
+  "id" | "nftId" | "edition" | "quantity"
+>;
 
 export interface CartContextType {
   items: CartItem[];
@@ -19,6 +26,10 @@ export interface CartContextType {
   updateQuantity: (id: string, delta: number) => void;
   removeItem: (id: string) => void;
   clearCart: () => void;
+  removePurchasedItems: (
+    orderId: string,
+    purchasedItems: PurchasedCartItem[]
+  ) => void;
 }
 
 export const CartContext = createContext<CartContextType | undefined>(

@@ -1,8 +1,8 @@
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { CartProvider } from "@/features/cart/CartContext";
 import { AuthProvider } from "@/features/auth/AuthContext";
+import { RealtimeSync } from "@/realtime/RealtimeSync";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,11 +28,18 @@ const queryClient = new QueryClient({
   },
 });
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <CartProvider>{children}</CartProvider>
+        <CartProvider>
+          <RealtimeSync />
+          {children}
+        </CartProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

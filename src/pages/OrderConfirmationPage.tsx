@@ -1,5 +1,5 @@
 
-import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   Clock3,
@@ -8,7 +8,8 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { useCart } from "@/features/cart/useCart";
 import {
   getOrderStatus,
   type CreatedOrder,
@@ -27,41 +28,44 @@ function readLastOrder(): CreatedOrder | null {
 
     const parsed: unknown = JSON.parse(stored);
 
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+
+    const candidate = parsed as Partial<CreatedOrder>;
+
     if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      !("id" in parsed) ||
-      !("createdAt" in parsed) ||
-      !("items" in parsed) ||
-      !("subtotal" in parsed) ||
-      !("discount" in parsed) ||
-      !("networkFee" in parsed) ||
-      !("total" in parsed) ||
-      !("customer" in parsed) ||
-      !("status" in parsed) ||
-      !Array.isArray(parsed.items) ||
-      !["pending", "confirmed", "rejected"].includes(String(parsed.status))
+      typeof candidate.id !== "string" ||
+      typeof candidate.idempotencyKey !== "string" ||
+      typeof candidate.createdAt !== "string" ||
+      !Array.isArray(candidate.items) ||
+      typeof candidate.subtotal !== "string" ||
+      typeof candidate.discount !== "string" ||
+      typeof candidate.networkFee !== "string" ||
+      typeof candidate.total !== "string" ||
+      !["pending", "confirmed", "rejected"].includes(
+        candidate.status ?? ""
+      ) ||
+      typeof candidate.customer !== "object" ||
+      candidate.customer === null
     ) {
       return null;
     }
 
-    return parsed as CreatedOrder;
+    return candidate as CreatedOrder;
   } catch {
     return null;
   }
 }
 
-function formatEth(value: string | number): string {
+function formatETH(value: string): string {
   const amount = Number(value);
 
   if (!Number.isFinite(amount)) {
-    return "— ETH";
+    return "0.000 ETH";
   }
 
-  return `${amount.toLocaleString("pt-BR", {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 6,
-  })} ETH`;
+  return `${amount.toFixed(3)} ETH`;
 }
 
 function formatDate(value: string): string {
@@ -71,53 +75,26 @@ function formatDate(value: string): string {
     return "Data indisponível";
   }
 
-  return date.toLocaleString("pt-BR", {
+  return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "medium",
     timeStyle: "short",
-  });
+  }).format(date);
 }
 
 function getStatusLabel(status: OrderStatus): string {
   switch (status) {
-    case "pending":
-      return "Pendente";
     case "confirmed":
-      return "Confirmado";
+      return "Pedido confirmado";
     case "rejected":
-      return "Rejeitado";
-  }
-}
-
-function getStatusTitle(status: OrderStatus): string {
-  switch (status) {
-    case "pending":
+      return "Pedido não aprovado";
+    default:
       return "Aguardando confirmação";
-    case "confirmed":
-      return "Pedido confirmado!";
-    case "rejected":
-      return "Pedido não concluído";
-  }
-}
-
-function getStatusDescription(order: CreatedOrder): string {
-  if (order.statusMessage) {
-    return order.statusMessage;
-  }
-
-  switch (order.status) {
-    case "pending":
-      return "Estamos processando seu pedido. Esta página será atualizada quando houver uma resposta.";
-    case "confirmed":
-      return "Seu pedido foi registrado com sucesso. Confira abaixo os detalhes da compra.";
-    case "rejected":
-      return "Não foi possível concluir sua compra. Confira os detalhes abaixo.";
   }
 }
 
 export function OrderConfirmationPage() {
-  const [order, setOrder] = useState<CreatedOrder | null>(() =>
-    readLastOrder()
-  );
+  const { removePurchasedItems } = useCart();
+  const [order, setOrder] = useState<CreatedOrder | null>(readLastOrder);
   const [statusCheckError, setStatusCheckError] = useState(false);
 
   const orderId = order?.id;
@@ -125,17 +102,15 @@ export function OrderConfirmationPage() {
 
   useEffect(() => {
     if (!orderId || orderStatus !== "pending") {
-  return;
-}
+      return;
+    }
 
-const currentOrderId = orderId;
-
-let cancelled = false;
+    let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    async function checkStatus() {
+    async function checkOrderStatus() {
       try {
-        const updatedOrder = await getOrderStatus(currentOrderId);
+        const updatedOrder = await getOrderStatus(orderId!);
 
         if (cancelled) {
           return;
@@ -144,13 +119,17 @@ let cancelled = false;
         setOrder(updatedOrder);
         setStatusCheckError(false);
 
-        localStorage.setItem(
-          LAST_ORDER_KEY,
-          JSON.stringify(updatedOrder)
-        );
+        try {
+          localStorage.setItem(
+            LAST_ORDER_KEY,
+            JSON.stringify(updatedOrder)
+          );
+        } catch {
+          setStatusCheckError(true);
+        }
 
         if (updatedOrder.status === "pending") {
-          timeoutId = setTimeout(checkStatus, 1200);
+          timeoutId = setTimeout(checkOrderStatus, 1200);
         }
       } catch {
         if (cancelled) {
@@ -158,11 +137,11 @@ let cancelled = false;
         }
 
         setStatusCheckError(true);
-        timeoutId = setTimeout(checkStatus, 2500);
+        timeoutId = setTimeout(checkOrderStatus, 2500);
       }
     }
 
-    timeoutId = setTimeout(checkStatus, 500);
+    timeoutId = setTimeout(checkOrderStatus, 500);
 
     return () => {
       cancelled = true;
@@ -173,20 +152,25 @@ let cancelled = false;
     };
   }, [orderId, orderStatus]);
 
+  useEffect(() => {
+    if (!order || order.status !== "confirmed") {
+      return;
+    }
+
+    removePurchasedItems(order.id, order.items);
+  }, [order, removePurchasedItems]);
+
   if (!order) {
     return (
-      <main className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-4 px-6 py-16 text-center font-mono text-white">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10">
-          <ShoppingBag className="h-7 w-7 text-amber-500" />
-        </div>
-
-        <h1 className="text-lg font-bold">Nenhum pedido encontrado</h1>
-
+      <main className="mx-auto flex w-full max-w-3xl flex-col items-center gap-5 px-6 py-20 text-center font-mono text-white">
+        <XCircle className="h-12 w-12 text-red-400" />
+        <h1 className="text-lg font-bold">
+          Nenhum pedido encontrado
+        </h1>
         <p className="max-w-md text-xs leading-6 text-neutral-400">
-          Não encontramos os dados de uma compra recente neste navegador.
-          Você pode voltar à loja para continuar explorando os NFTs.
+          Não foi possível localizar os dados do último pedido neste
+          navegador. Você pode voltar à loja para explorar os NFTs.
         </p>
-
         <Link
           to="/"
           className="rounded-lg bg-amber-600 px-5 py-3 text-xs font-bold text-neutral-950 transition-colors hover:bg-amber-500"
@@ -197,216 +181,178 @@ let cancelled = false;
     );
   }
 
-  const isPending = order.status === "pending";
   const isConfirmed = order.status === "confirmed";
   const isRejected = order.status === "rejected";
+  const isPending = order.status === "pending";
 
-  const statusBorderClass = isPending
-    ? "border-sky-500/40 bg-sky-500/10"
-    : isConfirmed
-      ? "border-amber-500/40 bg-amber-500/10"
-      : "border-red-500/40 bg-red-500/10";
+  const StatusIcon = isConfirmed
+    ? CheckCircle2
+    : isRejected
+      ? XCircle
+      : Clock3;
 
-  const statusIconClass = isPending
-    ? "text-sky-400"
-    : isConfirmed
-      ? "text-amber-500"
-      : "text-red-400";
+  const statusColor = isConfirmed
+    ? "text-emerald-400"
+    : isRejected
+      ? "text-red-400"
+      : "text-amber-400";
 
-  const statusLabelClass = isPending
-    ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
-    : isConfirmed
-      ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
-      : "border-red-500/30 bg-red-500/10 text-red-300";
+  const statusDescription = isConfirmed
+    ? "Sua compra foi confirmada. Os itens comprados foram removidos do carrinho."
+    : isRejected
+      ? order.statusMessage ??
+        "O pedido não pôde ser confirmado. Os itens continuam no carrinho."
+      : "Estamos verificando a disponibilidade dos itens e confirmando seu pedido.";
 
   return (
-    <main className="flex w-full items-center justify-center px-4 py-8 font-mono text-white sm:px-6">
-      <section className="relative flex w-full max-w-2xl flex-col gap-6 overflow-hidden rounded-2xl border border-amber-900/30 bg-[#19100B] p-5 shadow-2xl sm:p-8">
-        <div
-          className={`absolute bottom-0 left-0 right-0 h-1 ${
-            isPending
-              ? "bg-sky-500"
-              : isConfirmed
-                ? "bg-amber-600"
-                : "bg-red-500"
-          }`}
-        />
-
-        <Link
-          to="/"
-          aria-label="Voltar para a página inicial"
-          className="absolute right-4 top-4 rounded p-1 text-neutral-400 transition-colors hover:text-white"
-        >
-          <X className="h-4 w-4" />
+    <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 py-10 font-mono text-white md:px-12">
+      <nav aria-label="Breadcrumb" className="text-xs text-neutral-400">
+        <Link to="/" className="hover:text-white">
+          Início
         </Link>
+        <span className="mx-2">/</span>
+        <span className="text-neutral-200">Confirmação do pedido</span>
+      </nav>
 
-        <header className="flex flex-col items-center gap-3 pt-3 text-center">
-          <div
-            className={`flex h-16 w-16 items-center justify-center rounded-2xl border ${statusBorderClass}`}
-          >
-            {isPending ? (
-              <Clock3 className={`h-9 w-9 ${statusIconClass}`} />
-            ) : isConfirmed ? (
-              <CheckCircle2 className={`h-9 w-9 ${statusIconClass}`} />
-            ) : (
-              <XCircle className={`h-9 w-9 ${statusIconClass}`} />
-            )}
-          </div>
+      <section className="flex flex-col items-center gap-4 rounded-xl border border-white/10 bg-[#1C120C] px-6 py-10 text-center">
+        <StatusIcon className={`h-14 w-14 ${statusColor}`} />
 
-          <h1 className="text-lg font-bold">
-            {getStatusTitle(order.status)}
-          </h1>
+        <h1 className="text-xl font-bold">
+          {getStatusLabel(order.status)}
+        </h1>
 
-          <p className="max-w-md text-xs leading-6 text-neutral-300">
-            {getStatusDescription(order)}
-          </p>
+        <p className="max-w-xl text-xs leading-6 text-neutral-400">
+          {statusDescription}
+        </p>
 
-          {statusCheckError && isPending && (
-            <p
-              role="status"
-              className="max-w-md text-xs leading-5 text-amber-300"
-            >
-              Não conseguimos consultar o pedido neste momento. Vamos tentar
-              novamente automaticamente.
-            </p>
-          )}
-
-          <span
-            className={`rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${statusLabelClass}`}
-          >
-            Pedido {getStatusLabel(order.status)}
+        {isPending && (
+          <span className="mt-1 inline-flex items-center gap-2 text-xs text-amber-400">
+            <Clock3 className="h-4 w-4" />
+            Verificando automaticamente...
           </span>
-        </header>
+        )}
 
-        <div className="grid grid-cols-2 gap-4 border-y border-white/10 py-4 text-[10px] sm:grid-cols-4">
-          <div className="min-w-0">
-            <span className="mb-1 block text-neutral-400">ID do pedido</span>
-            <strong className="block break-all text-neutral-200">
-              {order.id}
-            </strong>
+        {statusCheckError && isPending && (
+          <p role="status" className="text-xs text-neutral-500">
+            Não foi possível consultar o status agora. Tentaremos novamente
+            automaticamente.
+          </p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-5 rounded-xl border border-white/10 bg-[#1C120C] p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-sm font-bold">Detalhes do pedido</h2>
+            <p className="mt-2 break-all text-xs text-neutral-400">
+              Pedido: {order.id}
+            </p>
           </div>
 
-          <div className="min-w-0">
-            <span className="mb-1 block text-neutral-400">Data</span>
-            <strong className="block text-neutral-200">
-              {formatDate(order.createdAt)}
-            </strong>
-          </div>
-
-          <div className="min-w-0">
-            <span className="mb-1 block text-neutral-400">Rede</span>
-            <strong className="block text-neutral-200">
-              {order.customer.network}
-            </strong>
-          </div>
-
-          <div className="min-w-0">
-            <span className="mb-1 block text-neutral-400">Carteira</span>
-            <strong className="block break-words text-neutral-200">
-              {order.customer.walletType}
-            </strong>
-          </div>
+          <span className="text-xs text-neutral-400">
+            {formatDate(order.createdAt)}
+          </span>
         </div>
 
-        <section className="flex flex-col gap-4">
-          <h2 className="text-xs font-bold tracking-wide">
-            Detalhes do pedido
-          </h2>
+        <div className="space-y-4 border-t border-white/10 pt-5">
+          {order.items.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center gap-3 text-xs"
+            >
+              <img
+                src={item.imageUrl}
+                alt={item.name}
+                className="h-14 w-14 rounded-lg border border-white/10 object-cover"
+              />
 
-          <div className="flex justify-between border-b border-white/5 pb-2 text-[10px] text-neutral-400">
-            <span>NFT</span>
-            <div className="flex gap-5">
-              <span>Qtd.</span>
-              <span className="w-24 text-right">Subtotal</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-bold">{item.name}</p>
+                <p className="mt-1 text-neutral-400">
+                  Edição {item.edition} · Quantidade {item.quantity}
+                </p>
+                <p className="mt-1 text-neutral-500">
+                  {formatETH(item.price)} por unidade
+                </p>
+              </div>
+
+              <span className="shrink-0 font-bold text-amber-500">
+                {formatETH(
+                  (Number(item.price) * item.quantity).toString()
+                )}
+              </span>
             </div>
-          </div>
+          ))}
+        </div>
 
-          <div className="flex flex-col gap-4">
-            {order.items.map((item) => (
-              <article
-                key={item.id}
-                className="flex items-center justify-between gap-3 text-xs"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.name}
-                    className="h-11 w-11 shrink-0 rounded-lg border border-white/10 bg-neutral-900 object-cover"
-                  />
-
-                  <div className="min-w-0">
-                    <h3 className="truncate text-[11px] font-bold">
-                      {item.name}
-                    </h3>
-
-                    <p className="mt-1 text-[10px] text-neutral-400">
-                      Token: {item.tokenId}
-                    </p>
-
-                    <p className="text-[10px] text-neutral-500">
-                      Edição {item.edition}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-5">
-                  <span className="text-[11px] text-neutral-400">
-                    {item.quantity}
-                  </span>
-
-                  <span className="w-24 text-right text-xs font-bold text-amber-500">
-                    {formatEth(Number(item.price) * item.quantity)}
-                  </span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-3 border-t border-white/10 pt-4 text-xs">
+        <div className="space-y-3 border-t border-white/10 pt-5 text-xs">
           <div className="flex justify-between gap-4">
             <span className="text-neutral-400">Subtotal</span>
-            <span>{formatEth(order.subtotal)}</span>
+            <span>{formatETH(order.subtotal)}</span>
           </div>
 
           <div className="flex justify-between gap-4">
             <span className="text-neutral-400">Desconto</span>
-            <span>{formatEth(order.discount)}</span>
+            <span>{formatETH(order.discount)}</span>
           </div>
 
           <div className="flex justify-between gap-4">
             <span className="text-neutral-400">Taxa de rede</span>
-            <span>{formatEth(order.networkFee)}</span>
+            <span>{formatETH(order.networkFee)}</span>
           </div>
 
           <div className="flex justify-between gap-4 border-t border-white/10 pt-4 text-sm font-bold">
             <span>Total</span>
-            <span className="text-amber-500">{formatEth(order.total)}</span>
+            <span className="text-amber-500">
+              {formatETH(order.total)}
+            </span>
           </div>
-        </section>
-
-        <p className="text-center text-[10px] leading-5 text-neutral-400">
-          Esta é uma confirmação de pedido de demonstração. Nenhuma transação
-          real na blockchain é comprovada por esta tela.
-        </p>
-
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Link
-            to="/"
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3 text-xs font-bold text-neutral-950 transition-colors hover:bg-amber-500"
-          >
-            Continuar explorando
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
         </div>
+      </section>
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Link
+          to="/"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-5 py-3 text-xs font-bold text-neutral-950 transition-colors hover:bg-amber-500"
+        >
+          <ShoppingBag className="h-4 w-4" />
+          Continuar explorando
+        </Link>
 
         {isRejected && (
-          <p className="text-center text-[10px] leading-5 text-neutral-400">
-            Nenhuma compra foi concluída. Você pode voltar à loja e tentar
-            novamente.
-          </p>
+          <Link
+            to="/carrinho"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 px-5 py-3 text-xs font-bold text-white transition-colors hover:bg-white/5"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Voltar ao carrinho
+          </Link>
         )}
-      </section>
+
+        {isConfirmed && (
+          <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 px-5 py-3 text-xs text-emerald-400">
+            <CheckCircle2 className="h-4 w-4" />
+            Compra concluída
+          </span>
+        )}
+
+        {isPending && (
+          <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-500/20 px-5 py-3 text-xs text-amber-400">
+            <Clock3 className="h-4 w-4" />
+            Aguardando confirmação
+          </span>
+        )}
+      </div>
+
+      {isRejected && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-950/20 p-4 text-xs text-red-300">
+          <X className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Nenhuma quantidade foi removida do carrinho por esta confirmação
+            rejeitada. Revise os itens antes de tentar novamente.
+          </p>
+        </div>
+      )}
     </main>
   );
 }

@@ -28,7 +28,7 @@ const inputClass =
 
 export function CheckoutPage() {
   const navigate = useNavigate();
-  const { items, clearCart } = useCart();
+  const { items } = useCart();
 
   const idempotencyKey = useRef(crypto.randomUUID());
 
@@ -61,7 +61,6 @@ export function CheckoutPage() {
         return;
       }
 
-      clearCart();
       navigate({ to: "/confirmacao" });
     },
     onError: () => {
