@@ -1,51 +1,94 @@
-import { useState } from 'react';
+import { useState } from "react";
+import type { NFT } from "@/contracts/nft";
 
-export function NFTDescription() {
-  const [activeTab, setActiveTab] = useState<'details' | 'reviews'>('details');
+interface NFTDescriptionProps {
+  nft: NFT;
+}
+
+export function NFTDescription({ nft }: NFTDescriptionProps) {
+  const [activeTab, setActiveTab] = useState<"details" | "reviews">(
+    "details"
+  );
 
   return (
     <section className="border-t border-white/10 pt-8 font-mono">
-      {/* Abas */}
-      <div className="flex items-center gap-8 border-b border-white/10 pb-3 text-xs">
+      <div className="flex items-center gap-8 border-b border-white/10 text-xs">
         <button
           type="button"
-          onClick={() => setActiveTab('details')}
-          className={`relative pb-3 transition-colors ${
-            activeTab === 'details' ? 'text-amber-500 font-bold' : 'text-neutral-400 hover:text-white'
+          onClick={() => setActiveTab("details")}
+          className={`pb-3 ${
+            activeTab === "details"
+              ? "border-b-2 border-amber-500 font-bold text-amber-500"
+              : "text-neutral-400"
           }`}
         >
           Detalhes do NFT
-          {activeTab === 'details' && (
-            <span className="absolute bottom-0 left-0 w-full h-[2px] bg-amber-500" />
-          )}
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveTab('reviews')}
-          className={`pb-3 transition-colors ${
-            activeTab === 'reviews' ? 'text-amber-500 font-bold' : 'text-neutral-400 hover:text-white'
+          onClick={() => setActiveTab("reviews")}
+          className={`pb-3 ${
+            activeTab === "reviews"
+              ? "border-b-2 border-amber-500 font-bold text-amber-500"
+              : "text-neutral-400"
           }`}
         >
-          Avaliações de colecionadores (19)
+          Avaliações ({nft.reviewsCount})
         </button>
       </div>
 
-      {/* Conteúdo */}
-      <div className="py-6 space-y-4 text-xs text-neutral-400 leading-relaxed max-w-4xl">
-        <p>
-          Emerald Ape #042 é uma obra digital 1/50 finalizada à mão da coleção Kurio Editions. Cada atributo fica armazenado nos metadados do token e verificado na Ethereum. A obra explora identidade, movimento e luz em um mundo digital sem fronteiras.
-        </p>
-        <p>
-          A propriedade inclui a arte em alta resolução, lançamentos exclusivos para colecionadores e um registro permanente de procedência registrado na rede. Nova Sato recebe 5% de direitos autorais nas vendas secundárias, apoiando novos trabalhos e lançamentos da comunidade.
-        </p>
-        
-        <div className="pt-2 space-y-2">
-          <p><strong className="text-neutral-200">Rede:</strong> Cunhado na Ethereum com procedência imutável e metadados armazenados no IPFS.</p>
-          <p><strong className="text-neutral-200">Contrato:</strong> Direitos autorais do criador: 5% nas vendas secundárias, pagos automaticamente pelos mercados compatíveis.</p>
-          <p><strong className="text-neutral-200">Direitos autorais:</strong> <code className="text-amber-500">0x7A42...19E8</code> • Contrato inteligente ERC-721 verificado.</p>
-        </div>
+      <div className="max-w-4xl space-y-4 py-6 text-xs leading-relaxed text-neutral-400">
+        {activeTab === "details" ? (
+          <>
+            <p>{nft.description}</p>
+
+            <p>
+              <strong className="text-neutral-200">Coleção: </strong>
+              {nft.collection}
+            </p>
+
+            <p>
+              <strong className="text-neutral-200">Categoria: </strong>
+              {nft.category}
+            </p>
+
+            <p>
+              <strong className="text-neutral-200">Rede: </strong>
+              {nft.network}
+            </p>
+
+            <p>
+              <strong className="text-neutral-200">
+                Edições disponíveis:{" "}
+              </strong>
+              {nft.availableEditions} de {nft.totalEditions}
+            </p>
+
+            <p>
+              <strong className="text-neutral-200">Contrato: </strong>
+              <code className="text-amber-500">
+                {nft.contractAddress}
+              </code>
+            </p>
+
+            <p>
+              <strong className="text-neutral-200">
+                Taxa do criador:{" "}
+              </strong>
+              {nft.creatorFee}
+            </p>
+          </>
+        ) : (
+          <p>
+            {nft.reviewsCount > 0
+              ? `${nft.reviewsCount} avaliações registradas para este NFT.`
+              : "Este NFT ainda não possui avaliações."}
+          </p>
+        )}
       </div>
     </section>
   );
 }
+
+export default NFTDescription;
