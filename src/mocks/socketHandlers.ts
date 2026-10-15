@@ -1,3 +1,4 @@
+
 import { ws } from "msw";
 import { toSocketIo } from "@mswjs/socket.io-binding";
 import Decimal from "decimal.js";
@@ -10,48 +11,61 @@ export interface NFTUpdatedEvent {
   version: number;
 }
 
-const socketLink = ws.link("*/socket.io/");
+// O MSW trata o prefixo /socket.io/ separadamente.
+const socketLink = ws.link("*");
 
-socketLink.addEventListener("connection", (connection) => {
-  const { server } = toSocketIo(connection);
+const socketHandler = socketLink.addEventListener(
+  "connection",
+  (connection) => {
+    console.info("[realtime] Conexão WebSocket interceptada.");
 
-  server.on(
-    "realtime:request-nft-update",
-    (_messageEvent, id: unknown) => {
-      if (typeof id !== "string" || !id.trim()) {
-        return;
-      }
+    const { server } = toSocketIo(connection);
 
-      const nfts = getStoredNFTs();
-      const nft = nfts.find((item) => item.id === id);
+    server.on(
+      "realtime:request-nft-update",
+      (_messageEvent, id: unknown) => {
+        if (typeof id !== "string" || !id.trim()) {
+          return;
+        }
 
-      if (!nft) {
-        server.emit("realtime:error", {
-          code: "NFT_NOT_FOUND",
-          message: "NFT não encontrado.",
-        });
-        return;
-      }
+        const nfts = getStoredNFTs();
+        const nft = nfts.find((item) => item.id === id);
 
-      const updatedNFT = {
-        ...nft,
-        price: new Decimal(nft.price).plus("0.01").toFixed(),
-        availableEditions: Math.max(0, nft.availableEditions - 1),
-        version: nft.version + 1,
-      };
+        if (!nft) {
+          server.emit("realtime:error", {
+            code: "NFT_NOT_FOUND",
+            message: "NFT não encontrado.",
+          });
+          return;
+        }
 
-      saveStoredNFTs(
-        nfts.map((item) => (item.id === id ? updatedNFT : item)),
-      );
+        const updatedNFT = {
+          ...nft,
+          price: new Decimal(nft.price).plus("0.01").toFixed(),
+          availableEditions: Math.max(
+            0,
+            nft.availableEditions - 1,
+          ),
+          version: nft.version + 1,
+        };
 
-      const event: NFTUpdatedEvent = {
-        id: updatedNFT.id,
-        price: updatedNFT.price,
-        availableEditions: updatedNFT.availableEditions,
-        version: updatedNFT.version,
-      };
+        saveStoredNFTs(
+          nfts.map((item) =>
+            item.id === id ? updatedNFT : item,
+          ),
+        );
 
-      server.emit("nft.updated", event);
-    },
-  );
-});
+        const event: NFTUpdatedEvent = {
+          id: updatedNFT.id,
+          price: updatedNFT.price,
+          availableEditions: updatedNFT.availableEditions,
+          version: updatedNFT.version,
+        };
+
+        server.emit("nft.updated", event);
+      },
+    );
+  },
+);
+
+export const socketHandlers = [socketHandler];

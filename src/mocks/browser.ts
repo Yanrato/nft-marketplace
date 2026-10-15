@@ -1,12 +1,12 @@
+
 import { setupWorker } from "msw/browser";
 import { authHandlers } from "./authHandlers";
 import { handlers } from "./handlers";
 import { orderHandlers } from "./orderHandlers";
-
-// Registra o listener WebSocket separadamente dos handlers HTTP.
-import "./socketHandlers";
+import { socketHandlers } from "./socketHandlers";
 
 export const worker = setupWorker(
+  ...socketHandlers,
   ...authHandlers,
   ...handlers,
   ...orderHandlers,
